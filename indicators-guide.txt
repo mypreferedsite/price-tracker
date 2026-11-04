@@ -234,6 +234,37 @@ volatility (Bollinger Bands) gives more different information.
 
 
 ---------------------------------------------------------------------
+ THE SYNTHESIS PANEL (top of asset.html)
+---------------------------------------------------------------------
+It combines the 5 indicators the way a trader reads them: first the
+DIRECTION, then whether the price is cheap or expensive right now.
+
+  DIRECTION (trend) : two moving averages, MACD, linear regression.
+  STRETCH           : RSI, Bollinger Bands, and the distance of the
+                      price from the regression line.
+
+Each indicator gives a vote from -1 (bearish) to +1 (bullish). The
+direction score and the stretch score are then read together:
+
+  Uptrend + not stretched   -> BUY bias (pullbacks are the usual entry)
+  Uptrend + stretched       -> HOLD, do not chase the price
+  Downtrend + not oversold  -> SELL / stay out
+  Downtrend + cheap side    -> WAIT: a bounce is possible, but trading
+                               against the trend is risky
+  No clear trend            -> NEUTRAL (watch the edges of the range)
+
+The score from -100 to +100 shows how strong the picture is.
+"Confidence" depends on how many of the 5 agree and on whether the
+data is good enough (enough history, R2 not too low).
+
+The panel also shows the volatility (Bollinger width), the levels where
+the view would weaken, a backtest reality check, and a reminder about
+news events. It is a reading aid, not a prediction and not advice.
+When the indicators disagree, the honest answer is "no edge": do not
+force a trade.
+
+
+---------------------------------------------------------------------
  THINGS NO INDICATOR CAN SEE
 ---------------------------------------------------------------------
 - Central bank interest-rate decisions (US Fed, ECB, Bank of England,
