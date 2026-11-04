@@ -34,6 +34,19 @@
   .cbox { position:relative; height:30vh; min-height:220px; }
   .stats { font-size:.85rem; margin-top:6px; line-height:1.5; }
   .warn { color:#f0883e; } .up { color:#3fb950; } .down { color:#f85149; }
+  footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.7;
+  padding: 16px 8px;
+  margin-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+footer span {
+  display: block;
+}
 </style>
 </head>
 <body>
@@ -559,5 +572,14 @@ loadServer().then(() => {
   setInterval(tick, CHART_EVERY_MS);
 });
 </script>
+  </script>
+
+<footer>
+  <span>This site is intended for personal use only.</span>
+  <span>The owner, author and publisher are not responsible for any advice or decisions you make based on information provided by this site.</span>
+</footer>
+
+</body>
+</html>
 </body>
 </html>
