@@ -51,6 +51,19 @@
   .syn th, .syn td { text-align:left; white-space:normal; position:static; vertical-align:top; }
   .syn th:first-child, .syn td:first-child { position:static; }
   .synlist { font-size:.85rem; line-height:1.5; margin:8px 0 0; padding-left:18px; }
+  footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.7;
+  padding: 16px 8px;
+  margin-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+footer span {
+  display: block;
+}
 </style>
 </head>
 <body>
@@ -792,5 +805,9 @@ refresh();
 setInterval(async () => { await fetchLive(); const ind = indicators(current); renderHeader(ind); checkAlerts(); }, 60 * 1000);
 setInterval(refresh, 5 * 60 * 1000);
 </script>
+  <footer>
+  <span>This site is intended for personal use only.</span>
+  <span>The owner, author and publisher are not responsible for any advice or decisions you make based on information provided by this site.</span>
+</footer>
 </body>
 </html>
