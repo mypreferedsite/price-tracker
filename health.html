@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data health – are the prices up to date?</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --text:#e6edf3; --muted:#8b98a5; --line:#2b3540; --blue:#2f6feb; --up:#3fb950; --down:#f85149; --warn:#f0883e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:12px; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; max-width:1000px; margin:0 auto; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  h2 { font-size:.95rem; margin:0 0 6px; }
+  a { color:#4dabf7; }
+  .status { color:var(--muted); font-size:.8rem; margin-bottom:8px; line-height:1.45; }
+  .card { background:var(--card); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
+  p, li { line-height:1.5; font-size:.88rem; }
+  p { margin:6px 0; }
+  ul { margin:6px 0; padding-left:20px; }
+  .up { color:var(--up); } .down { color:var(--down); } .warn { color:var(--warn); } .mut { color:var(--muted); }
+  .hero { display:flex; gap:14px; align-items:center; }
+  .lamp { flex:none; width:46px; height:46px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 6px rgba(139,152,165,.15); }
+  .lamp.g { background:var(--up); box-shadow:0 0 0 6px rgba(63,185,80,.18); }
+  .lamp.o { background:var(--warn); box-shadow:0 0 0 6px rgba(240,136,62,.2); }
+  .lamp.r { background:var(--down); box-shadow:0 0 0 6px rgba(248,81,73,.2); }
+  .hero b { font-size:1.05rem; }
+  .wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table { border-collapse:collapse; width:100%; font-size:.8rem; white-space:nowrap; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:600; }
+  td.l, th.l { text-align:left; white-space:normal; min-width:200px; }
+  .box { border-left:5px solid var(--blue); background:#121820; border-radius:8px; padding:10px 12px; }
+</style>
+</head>
+<body>
+<h1>Data health</h1>
+<div class="status"><a href="currencies.html">Currencies</a> · <a href="metals.html">Metals</a> · <a href="crypto.html">Crypto</a> · <a href="track.html">Track record</a> · <a href="start.html">Start</a></div>
+<div class="status" id="loading">Loading…</div>
+
+<div id="main" style="display:none">
+  <div class="card">
+    <div class="hero"><div class="lamp" id="lamp"></div><div><b id="headline">–</b><div class="status" id="headsub" style="margin:2px 0 0"></div></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Each asset</h2>
+    <div class="wrap"><table id="assets"></table></div>
+    <div class="status" style="margin-top:6px">“Hourly points” = one price per hour, as used by the charts (weekend hours are not counted for currencies and metals). A gap is measured in hours when the market was open. “Source” is where the last price came from.</div>
+  </div>
+
+  <div class="card">
+    <h2>Price collector</h2>
+    <div id="collector"></div>
+  </div>
+
+  <div class="card">
+    <h2>The data file</h2>
+    <div id="file"></div>
+  </div>
+
+  <div class="card">
+    <h2>What to do if something is red or orange</h2>
+    <div class="box">
+      <ul>
+        <li>On GitHub open <b>Actions</b>, choose <b>Collect prices</b> and press <b>Run workflow</b>. Wait a minute and reload this page. If the run shows a red cross, open it and read the last lines.</li>
+        <li>If an asset has few hourly points (for example Platinum, Bitcoin or Ethereum right after the upgrade), run <b>Load past prices</b> once the same way.</li>
+        <li>Open <code>data/status.json</code> in your repository: it lists which source each price came from and any warning.</li>
+        <li>On weekends currencies and metals are closed, so only crypto prices are expected.</li>
+        <li>Orange or red on a single asset usually means its source failed for a while. If it stays that way for a day, send the text of <code>data/status.json</code> and the error line of the failed run to get it fixed.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const HOUR = 3600 * 1000;
+const ASSETS = [
+  { key:'XAU', name:'Gold',          grp:'metal' },    { key:'XAG', name:'Silver',        grp:'metal' },   { key:'XPT', name:'Platinum',     grp:'metal' },
+  { key:'CHF', name:'Swiss franc',   grp:'currency' }, { key:'EUR', name:'Euro',          grp:'currency' }, { key:'JPY', name:'Japanese yen', grp:'currency' }, { key:'GBP', name:'British pound', grp:'currency' },
+  { key:'BTC', name:'Bitcoin',       grp:'crypto' },   { key:'ETH', name:'Ethereum',      grp:'crypto' },
+];
+// currencies and metals do not trade from Friday ~22:00 UTC to Sunday ~22:00 UTC (same rule as the analysis pages)
+const isClosed = t => { const d = new Date(t), wd = d.getUTCDay(), h = d.getUTCHours(); return wd === 6 || (wd === 5 && h >= 22) || (wd === 0 && h < 22); };
+const fmt = v => v == null ? '–' : (v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(6));
+const pad = n => String(n).padStart(2, '0');
+const stamp = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const day = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+const ago = ms => { const h = ms / HOUR; return h < 1 ? Math.max(1, Math.round(ms / 60000)) + ' min' : h < 48 ? h.toFixed(1).replace('.0', '') + ' h' : Math.round(h / 24) + ' days'; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+// open hourly slots strictly after slot a up to and including slot b
+function openSlots(a, b, weekends) {
+  if (!weekends) return Math.max(0, b - a);
+  let n = 0; for (let s = a + 1; s <= b; s++) if (!isClosed(s * HOUR)) n++;
+  return n;
+}
+
+function analyse(rows, a, now) {
+  const weekends = a.grp !== 'crypto', pts = [];
+  let lastT = null, lastV = null, firstT = null, slot = null;
+  for (const r of rows) {
+    const v = r.v && r.v[a.key];
+    if (v == null) continue;
+    if (firstT == null) firstT = r.t;
+    lastT = r.t; lastV = v;
+    if (weekends && isClosed(r.t)) continue;
+    const s = Math.floor(r.t / HOUR);
+    if (s !== slot) { pts.push({ t:r.t, s }); slot = s; }
+  }
+  let gapAll = 0, gapRecent = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const g = openSlots(pts[i-1].s, pts[i].s, weekends);
+    if (g > gapAll) gapAll = g;
+    if (pts[i].t >= now - 14 * 86400000 && g > gapRecent) gapRecent = g;
+  }
+  const sinceLast = lastT == null ? null : openSlots(Math.floor(lastT / HOUR), Math.floor(now / HOUR), weekends);
+  return { lastT, lastV, firstT, points:pts.length, gapAll, gapRecent, sinceLast };
+}
+
+async function start() {
+  const load = document.getElementById('loading');
+  let rows;
+  try {
+    const r = await fetch('data/snapshots.json', { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    rows = await r.json();
+    if (!Array.isArray(rows)) throw new Error('not a list');
+  } catch (e) {
+    load.className = 'card'; load.innerHTML = '<b class="down">Cannot read data/snapshots.json</b> (' + esc(e.message) + ').<p>Open this page from your GitHub page link, not as a local file. If the file does not exist yet, run <b>Collect prices</b> on GitHub (Actions tab).</p>';
+    return;
+  }
+  let st = null;
+  try { const r = await fetch('data/status.json', { cache:'no-store' }); if (r.ok) st = await r.json(); } catch {}
+  load.style.display = 'none'; document.getElementById('main').style.display = '';
+  const now = Date.now(), closedNow = isClosed(now);
+
+  // ---- headline: age of the last saved row
+  const last = rows.length ? rows[rows.length - 1] : null;
+  let ref = last, weekendNote = '';
+  if (closedNow) {
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i].v && (rows[i].v.BTC != null || rows[i].v.ETH != null)) { ref = rows[i]; break; }
+    weekendNote = 'Weekend: currencies and metals are closed, so only the crypto prices count right now.';
+  }
+  const lamp = document.getElementById('lamp'), head = document.getElementById('headline'), sub = document.getElementById('headsub');
+  if (!ref) { lamp.className = 'lamp r'; head.textContent = 'No prices saved yet'; sub.textContent = 'Run Collect prices on GitHub (Actions tab).'; }
+  else {
+    const age = now - ref.t, h = age / HOUR;
+    lamp.className = 'lamp ' + (h <= 2 ? 'g' : h <= 6 ? 'o' : 'r');
+    head.textContent = (h <= 2 ? 'Up to date' : h <= 6 ? 'A little late' : 'Out of date') + ' · last prices saved ' + ago(age) + ' ago (' + stamp(ref.t) + ')';
+    sub.textContent = (weekendNote ? weekendNote + ' ' : '') + (h <= 2 ? 'Prices are collected every 30 minutes.' : h <= 6 ? 'Prices should arrive every 30 minutes; GitHub sometimes runs late.' : 'No new price for more than 6 hours. See “What to do” below.');
+  }
+
+  // ---- table per asset
+  const src = (st && st.source) || {}, warns = (st && st.warnings) || [];
+  let html = '<tr><th>Asset</th><th>Last price</th><th>Last saved</th><th>Hourly points</th><th>First date</th><th>Longest gap</th><th>Gap, last 14 d</th><th>Source</th><th class="l">Status</th></tr>';
+  ASSETS.forEach(a => {
+    const x = analyse(rows, a, now);
+    let cls = 'up', text = 'OK';
+    const wmsg = warns.filter(w => w.indexOf(a.key + ':') === 0);
+    if (x.lastT == null) { cls = 'down'; text = 'Check: no price saved for this asset. Run Collect prices' + (['XPT', 'BTC', 'ETH'].includes(a.key) ? ' and Load past prices.' : '.'); }
+    else if (x.points < 60) { cls = 'warn'; text = 'Check: only ' + x.points + ' hourly points. Run Load past prices.'; }
+    else if (x.sinceLast > 6) { cls = 'down'; text = 'Check: no price for ' + x.sinceLast + ' open hours.'; }
+    else if (x.gapRecent > 6) { cls = 'warn'; text = 'Check: a gap of ' + x.gapRecent + ' hours in the last 14 days.'; }
+    else if (wmsg.length) { cls = 'warn'; text = 'Check: ' + esc(wmsg[0]); }
+    else if (x.sinceLast > 2) { cls = 'warn'; text = 'A little late (' + x.sinceLast + ' open hours).'; }
+    else if (a.grp !== 'crypto' && closedNow) text = 'OK (market closed)';
+    html += `<tr><td>${a.name}</td><td>${fmt(x.lastV)}</td><td>${x.lastT == null ? '–' : stamp(x.lastT)}</td><td>${x.points}</td><td>${x.firstT == null ? '–' : day(x.firstT)}</td><td>${x.points > 1 ? x.gapAll + ' h' : '–'}</td><td>${x.points > 1 ? x.gapRecent + ' h' : '–'}</td><td>${esc(src[a.key] || '–')}</td><td class="l ${cls}">${text}</td></tr>`;
+  });
+  document.getElementById('assets').innerHTML = html;
+
+  // ---- collector status
+  const col = document.getElementById('collector');
+  if (!st) col.innerHTML = '<p class="warn">No <code>data/status.json</code> yet. It appears after “Collect prices” has run once with the new collector.</p>';
+  else {
+    const age = st.t ? now - st.t : null;
+    col.innerHTML = `<p>Last collector run: <b>${st.t ? stamp(st.t) : '–'}</b>${age != null ? ' (' + ago(age) + ' ago)' : ''}.</p>` +
+      (warns.length ? '<p class="warn">Warnings from the last run:</p><ul>' + warns.map(w => '<li>' + esc(w) + '</li>').join('') + '</ul>' : '<p class="up">No warnings from the last run.</p>') +
+      '<p class="mut">A warning means a price jumped far from the previous one and was either confirmed by a second source or rejected.</p>';
+  }
+
+  // ---- file health
+  let unsorted = 0, dup = 0, noV = 0, empty = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r.v) { noV++; continue; }
+    if (!Object.values(r.v).some(v => v != null)) empty++;
+    if (i > 0) { if (r.t < rows[i-1].t) unsorted++; else if (r.t === rows[i-1].t) dup++; }
+  }
+  const sp = []; for (let i = Math.max(1, rows.length - 200); i < rows.length; i++) if (rows[i].t > rows[i-1].t) sp.push(rows[i].t - rows[i-1].t);
+  sp.sort((a, b) => a - b); const med = sp.length ? sp[Math.floor(sp.length / 2)] : null;
+  const bad = unsorted + dup + noV + empty;
+  document.getElementById('file').innerHTML =
+    `<p>Rows saved: <b>${rows.length}</b>${rows.length ? ' · from ' + stamp(rows[0].t) + ' to ' + stamp(rows[rows.length - 1].t) : ''}.</p>` +
+    `<p>Typical spacing of the latest rows: <b>${med == null ? '–' : Math.round(med / 60000) + ' minutes'}</b> (expected about 30).</p>` +
+    `<p class="${bad ? 'warn' : 'up'}">${bad ? 'Check: ' : 'OK: '}times in order: ${unsorted ? unsorted + ' row(s) out of order' : 'yes'} · duplicate times: ${dup} · rows without prices: ${noV + empty}.</p>` +
+    (bad ? '<p class="mut">Rows out of order or duplicated can make charts and indicators look wrong. Send me this page’s numbers and I will add a cleaning step.</p>' : '');
+}
+start();
+</script>
+</body>
+</html>
