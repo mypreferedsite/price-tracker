@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ratio – one asset measured in another</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>')</script>
+<script>window.Chart || document.write('<script src="lib/chart.umd.min.js"><\/script>')</script>
+<script src="core.js"></script>
+<script>if (typeof computeInd === 'undefined') document.addEventListener('DOMContentLoaded', () => { document.body.innerHTML = '<p style="padding:16px;font-family:sans-serif;color:#f85149">The file core.js is missing. Add it to the same folder as this page on GitHub.</p>'; });</script>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --text:#e6edf3; --muted:#8b98a5; --line:#2b3540; --blue:#2f6feb; --up:#3fb950; --down:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:12px; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  h2 { font-size:.95rem; margin:0 0 2px; }
+  .status { color:var(--muted); font-size:.8rem; margin-bottom:8px; }
+  .card { background:var(--card); border-radius:10px; padding:10px; margin-bottom:12px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  button { background:var(--blue); color:#fff; border:0; border-radius:6px; padding:7px 12px; font-size:.85rem; }
+  button.alt { background:#2b3540; }
+  button.sel { background:var(--blue) !important; }
+  button.chip { padding:8px 12px; border-radius:18px; border:2px solid transparent; }
+  button.chip.sel { border-color:currentColor; }
+  select, input[type=number] { background:#2b3540; color:var(--text); border:0; border-radius:6px; padding:7px; font-size:.9rem; }
+  input[type=number] { width:110px; }
+  label { font-size:.85rem; color:var(--muted); }
+  .big { display:flex; flex-wrap:wrap; gap:14px; align-items:baseline; margin-bottom:8px; }
+  .big .price { font-size:1.7rem; font-weight:700; }
+  .big span { color:var(--muted); font-size:.85rem; }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .cbox { position:relative; height:26vh; min-height:190px; }
+  .cbox.tall { height:40vh; min-height:270px; }
+  .tablewrap { overflow:auto; height:42vh; min-height:200px; -webkit-overflow-scrolling:touch; }
+  table { border-collapse:collapse; width:100%; font-size:.78rem; white-space:nowrap; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; position:sticky; left:0; background:var(--card); }
+  th { position:sticky; top:0; background:var(--card); color:var(--muted); font-weight:600; }
+  #banner { position:sticky; top:0; z-index:10; }
+  .alertmsg { background:#7a2e0e; border:1px solid #f0883e; border-radius:8px; padding:10px; margin-bottom:8px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  .alertlist div.item { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); font-size:.85rem; }
+  .done { color:var(--muted); }
+  .stats { font-size:.85rem; margin-top:6px; line-height:1.5; }
+  .warn { color:#f0883e; }
+  .verdict { border-radius:10px; padding:10px 12px; margin:8px 0; border-left:6px solid var(--muted); background:#121820; }
+  .verdict .vt { font-size:1.15rem; font-weight:700; }
+  .verdict .vs { font-size:.85rem; margin-top:4px; line-height:1.45; }
+  .gauge { position:relative; height:12px; border-radius:6px; background:linear-gradient(90deg,#f85149,#3a444f 50%,#3fb950); margin:14px 0 4px; }
+  .gauge i { position:absolute; top:-4px; width:4px; height:20px; background:#fff; border-radius:2px; transform:translateX(-50%); }
+  .gscale { display:flex; justify-content:space-between; font-size:.7rem; color:var(--muted); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.75rem; font-weight:600; white-space:nowrap; }
+  .b-up { background:rgba(63,185,80,.2); color:#3fb950; } .b-down { background:rgba(248,81,73,.2); color:#f85149; } .b-mid { background:#2b3540; color:var(--muted); }
+  table.syn { margin-top:6px; }
+  .syn th, .syn td { text-align:left; white-space:normal; position:static; vertical-align:top; }
+  .syn th:first-child, .syn td:first-child { position:static; }
+  .synlist { font-size:.85rem; line-height:1.5; margin:8px 0 0; padding-left:18px; }
+
+  .big .price { font-size:1.5rem; }
+  .pre { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .pre button { padding:6px 10px; border-radius:16px; font-size:.8rem; }
+</style>
+</head>
+<body>
+<div id="stale"></div>
+<h1>Ratio: one asset measured in another</h1>
+<div class="status"><a href="currencies.html" style="color:#4dabf7">Currencies</a> · <a href="metals.html" style="color:#4dabf7">Metals</a> · <a href="crypto.html" style="color:#4dabf7">Crypto</a> · <a href="index.html" style="color:#4dabf7">Overview</a> · <a href="start.html" style="color:#4dabf7">Start</a></div>
+<div class="status" id="status">Loading…</div>
+
+<div class="card">
+  <div class="pre" id="presets"></div>
+  <div class="row">
+    <label>Measure
+      <select id="selA"></select>
+    </label>
+    <label>in
+      <select id="selB"></select>
+    </label>
+    <button class="alt" id="swap">⇄ Swap</button>
+  </div>
+  <div class="big">
+    <div class="price" id="price">–</div>
+    <span id="chg"></span>
+    <span id="pchg"></span>
+  </div>
+  <div class="status" id="what" style="margin-bottom:8px"></div>
+  <div class="row">
+    <span id="ranges" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="alt" data-days="1">Day</button>
+      <button class="alt" data-days="7">Week</button>
+      <button class="alt" data-days="30">Month</button>
+      <button class="alt" data-days="365">Year</button>
+      <button class="alt" data-days="0">All</button>
+    </span>
+  </div>
+  <div class="row">
+    <label>Average type
+      <select id="matype"><option value="SMA">Simple (SMA)</option><option value="EMA">Exponential (EMA)</option></select>
+    </label>
+    <label>Fast (hours)
+      <select id="mafast"><option>5</option><option>10</option><option>12</option><option>20</option><option>24</option><option>30</option></select>
+    </label>
+    <label>Slow (hours)
+      <select id="maslow"><option>20</option><option>30</option><option>48</option><option>50</option><option>72</option><option>100</option><option>200</option></select>
+    </label>
+    <label>RSI (hours)
+      <select id="rsin"><option>7</option><option>14</option><option>21</option></select>
+    </label>
+  </div>
+  <div class="status" id="hint" style="margin:0"></div>
+</div>
+
+<!-- ======== advice ======== -->
+<div class="card" id="synth">
+  <h2>Advice for this ratio</h2>
+  <div class="status">The same five indicators as on the other pages, applied to the ratio. A rising ratio means the first asset gains on the second. Not financial advice.</div>
+  <div id="synbody">Loading…</div>
+</div>
+
+<!-- ======== zoom bar (stays on screen while you scroll the charts) ======== -->
+<div id="zoombar" style="position:sticky;top:0;z-index:9;background:var(--bg);padding:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+  <span style="font-size:.85rem;color:var(--muted)">Zoom all charts:</span>
+  <button class="alt" id="zsel">🔍 Select area: off</button>
+  <button class="alt" id="zin">＋</button>
+  <button class="alt" id="zout">－</button>
+  <button class="alt" id="zleft">◀</button>
+  <button class="alt" id="zright">▶</button>
+  <button class="alt" id="zreset">Reset zoom</button>
+</div>
+<div class="status" id="zinfo"></div>
+
+<!-- ======== chart 1 ======== -->
+<div class="card">
+  <h2 id="t1">Ratio with two moving averages and Bollinger Bands</h2>
+  <div class="status">▲ green = fast average crosses above slow, ▼ red = crosses below. Blue band = Bollinger Bands.</div>
+  <div class="cbox tall"><canvas id="c1"></canvas></div>
+</div>
+
+<div class="card">
+  <h2>RSI of the ratio</h2>
+  <div class="status">Above 70 = the ratio rose fast; below 30 = it fell fast.</div>
+  <div class="cbox"><canvas id="c2"></canvas></div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <strong id="ttitle">Hourly ratio</strong>
+    <button id="csv">Download CSV</button>
+  </div>
+  <div class="tablewrap"><table id="table"></table></div>
+</div>
+
+<script>
+// ---------------- configuration ----------------
+const ASSETS = [
+  { key:'XAU', name:'Gold',         grp:'metal',    color:'#f5c518' },
+  { key:'XAG', name:'Silver',       grp:'metal',    color:'#c0c7d0' },
+  { key:'XPT', name:'Platinum',     grp:'metal',    color:'#4dd0e1' },
+  { key:'CHF', name:'Swiss franc',   grp:'currency', color:'#ff6b6b' },
+  { key:'EUR', name:'Euro',          grp:'currency', color:'#4dabf7' },
+  { key:'JPY', name:'Japanese yen',  grp:'currency', color:'#51cf66' },
+  { key:'GBP', name:'British pound', grp:'currency', color:'#b197fc' },
+  { key:'BTC', name:'Bitcoin',       grp:'crypto',   color:'#f7931a' },
+  { key:'ETH', name:'Ethereum',      grp:'crypto',   color:'#8c9eff' },
+  { key:'USD', name:'US dollar',     grp:'usd',      color:'#e6edf3' },
+];
+const PRESETS = [['XAU','EUR','Gold in EUR'], ['XAU','CHF','Gold in CHF'], ['XAU','JPY','Gold in JPY'], ['XAU','BTC','Gold in Bitcoin'], ['XAU','XAG','Gold / Silver'], ['XPT','XAU','Platinum / Gold'], ['ETH','BTC','ETH / BTC'], ['EUR','CHF','EUR in CHF']];
+const byKey = k => ASSETS.find(a => a.key === k);
+const nm = k => byKey(k).name;
+
+// ---------------- helpers ----------------
+const fmtR = v => { if (v == null) return '–'; const a = Math.abs(v); return a >= 100 ? v.toFixed(2) : a >= 1 ? v.toFixed(4) : a >= 0.001 ? v.toFixed(6) : v.toPrecision(4); };
+fmt = fmtR;
+const setStatus = m => document.getElementById('status').textContent = m;
+const GROUP = 'ratio';
+const G = { rsiLo:30, rsiHi:70, rsiSpan:20, stretchW:0.35 };
+
+// ---------------- state ----------------
+let rows = [], series = [];
+let A = store.get('rt_a', 'XAU'), B = store.get('rt_b', 'EUR');
+let rangeDays = store.get('rt_range', 30);
+let maType = store.get('rt_matype', 'SMA'), maFast = store.get('rt_mafast', 20), maSlow = store.get('rt_maslow', 50), rsiN = store.get('rt_rsin', 14);
+
+// ---------------- data: the ratio A / B, one point per hour ----------------
+function buildSeries() {
+  series = [];
+  if (A === B) return;
+  const needClosed = [A, B].some(k => byKey(k).grp === 'metal' || byKey(k).grp === 'currency');
+  let slot = null;
+  for (const r of rows) {
+    const a = A === 'USD' ? 1 : r.v && r.v[A], b = B === 'USD' ? 1 : r.v && r.v[B];
+    if (a == null || b == null || !(a > 0) || !(b > 0)) continue;
+    if (needClosed && isClosed(r.t)) continue;
+    const s = Math.floor(r.t / HOUR);
+    if (s !== slot) { series.push({ t:r.t, a, b, p:a / b }); slot = s; }
+  }
+}
+async function loadData() {
+  try {
+    const r = await fetch('data/snapshots.json', { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    rows = await r.json();
+  } catch (e) {
+    setStatus('Could not load data/snapshots.json (' + e.message + '). Open this page from your GitHub page link, not as a local file.');
+    return false;
+  }
+  return true;
+}
+
+function indicators(p) { return computeInd(p, { maType, maFast, maSlow, rsiN, bbN:20, bbK:2 }); }
+
+const c1 = makeChart('c1', fmtR);
+const c2 = makeChart('c2', v => v.toFixed(1), { min:0, max:100 });
+initZoom([c2]);
+
+function renderCharts() {
+  const h = series, ind = indicators(h.map(x => x.p));
+  let idx = h.map((_, i) => i);
+  if (rangeDays > 0) { const from = Date.now() - rangeDays * 86400000; idx = idx.filter(i => h[i].t >= from); }
+  let show = idx;
+  if (show.length > 600) { const step = Math.ceil(show.length / 600); show = show.filter((_, k) => k % step === 0 || k === show.length - 1); }
+  viewH = h; viewShow = show;
+  const key = A + '|' + B + '|' + rangeDays;
+  if (key !== zKey) { zKey = key; zoom = null; }
+  if (zoom) { zoom.a = Math.max(0, Math.min(zoom.a, show.length - 2)); zoom.b = Math.max(zoom.a + 1, Math.min(zoom.b, show.length - 1)); }
+  const zspan = zoom && show.length > 1 ? h[show[zoom.b]].t - h[show[zoom.a]].t : 0;
+  const lab = zoom ? (t => zspan <= 12 * 3600000 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+      : zspan <= 7 * 86400000 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+      : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year:'2-digit' }))
+    : t => rangeDays === 1 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+    : rangeDays > 0 && rangeDays <= 7 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit' })
+    : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year: rangeDays === 0 || rangeDays > 31 ? '2-digit' : undefined });
+  charts.forEach(c => { c.data.labels = show.map(i => lab(h[i].t)); });
+  const pick = arr => show.map(i => arr[i]);
+  const title = A === 'USD' ? nm(B) + ' priced in US dollars (inverse)' : B === 'USD' ? nm(A) + ' in US dollars' : nm(A) + ' measured in ' + nm(B);
+
+  const buy = Array(show.length).fill(null), sell = Array(show.length).fill(null);
+  for (let k = 1; k < show.length; k++) {
+    const i0 = show[k-1], i1 = show[k];
+    if (ind.fast[i0] == null || ind.slow[i0] == null || ind.fast[i1] == null || ind.slow[i1] == null) continue;
+    const d0 = ind.fast[i0] - ind.slow[i0], d1 = ind.fast[i1] - ind.slow[i1];
+    if (d0 <= 0 && d1 > 0) buy[k] = h[i1].p; else if (d0 >= 0 && d1 < 0) sell[k] = h[i1].p;
+  }
+  c1.data.datasets = [
+    line(title, pick(ind.p), '#f5c518', { borderWidth:2 }),
+    line('Fast ' + maType + ' ' + maFast + 'h', pick(ind.fast), '#4dd0e1'),
+    line('Slow ' + maType + ' ' + maSlow + 'h', pick(ind.slow), '#ffffff'),
+    line('Band lower', pick(ind.bb.lo), 'rgba(77,171,247,.6)', { borderWidth:1 }),
+    line('Band upper', pick(ind.bb.up), 'rgba(77,171,247,.6)', { borderWidth:1, fill:'-1', backgroundColor:'rgba(77,171,247,.10)' }),
+    { type:'line', label:'Buy signal', data:buy, showLine:false, pointStyle:'triangle', pointRadius:7, borderColor:'#3fb950', backgroundColor:'#3fb950' },
+    { type:'line', label:'Sell signal', data:sell, showLine:false, pointStyle:'triangle', pointRotation:180, pointRadius:7, borderColor:'#f85149', backgroundColor:'#f85149' }
+  ];
+  c2.data.datasets = [
+    line('RSI ' + rsiN + 'h', pick(ind.rsi), '#b197fc', { borderWidth:2 }),
+    line('Overbought 70', show.map(() => 70), '#f85149', { borderDash:[5, 4], borderWidth:1 }),
+    line('Oversold 30', show.map(() => 30), '#3fb950', { borderDash:[5, 4], borderWidth:1 })
+  ];
+  document.getElementById('t1').textContent = title + ' – moving averages and Bollinger Bands';
+  renderAdvice(h, ind, idx);
+  applyZoom();
+  charts.forEach(c => c.update());
+  document.querySelectorAll('#ranges button').forEach(b => b.classList.toggle('sel', Number(b.dataset.days) === rangeDays));
+  document.getElementById('hint').textContent = maFast >= maSlow ? 'Tip: the fast average should be shorter than the slow one.' : '';
+  return { h, ind, idx };
+}
+
+// ---------------- advice ----------------
+function pairText(a, b) {
+  const ga = byKey(a).grp, gb = byKey(b).grp, na = nm(a), nb = nm(b);
+  if (b === 'USD') return `This is simply the ${na} price in dollars, the same as on its own page.`;
+  if (a === 'USD') return `This shows how many ${nb} units one dollar buys, so it is the dollar price chart turned upside down.`;
+  if (ga === 'metal' && gb === 'currency') return `<b>Purchasing-power view:</b> ${na} priced in ${nb} shows what the metal does for someone who lives and spends in ${nb}. If the metal rises in dollars but this ratio does not, the dollar was the main reason. If it rises in both, the strength comes from the metal itself.`;
+  if (ga === 'metal' && gb === 'crypto') return `<b>Mood gauge:</b> ${na} is the classic safe haven and ${nb} behaves more like a risk asset. A rising ratio usually goes with caution in the markets, a falling ratio with appetite for risk. The link is not stable and can break for months.`;
+  if (ga === 'metal' && gb === 'metal') return `<b>Metal against metal:</b> a rising ratio means ${na} is gaining on ${nb}. For gold/silver, a high ratio is often seen in fearful markets and a low one when growth and risk appetite are strong, because silver and platinum also depend on industry. It has worked as a guide in some periods and failed in others.`;
+  if (ga === 'crypto' && gb === 'crypto') return `<b>Crypto against crypto:</b> a rising ratio means ${na} is outperforming ${nb}. Ethereum usually gains on Bitcoin when appetite for risk is strong and loses when investors turn cautious.`;
+  if (ga === 'currency' && gb === 'currency') return `<b>Cross rate:</b> ${na} in ${nb} is driven by the gap in interest rates between the two central banks and by safe-haven flows (the franc and the yen tend to gain in fear).`;
+  if (gb === 'metal') return `<b>Priced in a metal:</b> this shows how much ${nb} one unit of ${na} buys. A falling ratio means ${na} is losing purchasing power against ${nb}.`;
+  if (gb === 'crypto') return `<b>Priced in crypto:</b> this shows how much ${nb} one unit of ${na} buys. A falling ratio means ${na} is losing value against ${nb}.`;
+  return `<b>Cost view:</b> this shows what ${na} costs in ${nb}.`;
+}
+
+function renderAdvice(h, ind, idx) {
+  const box = document.getElementById('synbody');
+  if (A === B) { box.innerHTML = '<span class="warn">Choose two different assets.</span>'; return; }
+  if (h.length < 3) { box.innerHTML = '<span class="warn">Not enough saved prices for both assets yet. If Platinum, Bitcoin or Ethereum are involved, run “Load past prices” (backfill) once on GitHub, then wait for new prices to be collected.</span>'; return; }
+  const rg = regress(h, idx), y = synthesize(h, ind, idx, rg);
+  if (!y || y.T == null) { box.innerHTML = '<span class="warn">Not enough history yet to judge the trend. Choose a longer period or wait for more saved prices.</span>'; return; }
+  const { T, S, R } = y, s0 = S ?? 0, a = nm(A), b = nm(B);
+  let title, sub, col;
+  if (T > TH) {
+    if (s0 >= -TH) { title = a + ' is gaining on ' + b; col = '#3fb950'; sub = `The ratio is in an uptrend and not stretched. The trend favours ${a} over ${b}. If you hold ${b} and wonder about switching, the trend supports ${a}; if you hold ${a}, it supports keeping it.`; }
+    else { title = a + ' leads, but do not chase'; col = '#f0883e'; sub = `${a} is gaining on ${b}, but the ratio is already stretched. Switching now means paying a high relative price. Waiting for a pullback toward the slow average or the middle band is the classic approach.`; }
+  } else if (T < -TH) {
+    if (s0 <= TH) { title = b + ' is gaining on ' + a; col = '#f85149'; sub = `The ratio is in a downtrend and not yet cheap. The trend favours ${b} over ${a}. Switching into ${a} now goes against the trend.`; }
+    else { title = b + ' leads, a bounce is possible'; col = '#f0883e'; sub = `${a} is losing ground to ${b}, but the ratio is on the cheap side of its range, so a short rebound is possible. Betting against the trend is risky; wait for the fast average or MACD to turn up first.`; }
+  } else {
+    if (s0 > 0.5) { title = 'No clear leader · ' + a + ' looks cheap'; col = '#8b98a5'; sub = `No clear trend, but ${a} is on the cheap side against ${b} within its range.`; }
+    else if (s0 < -0.5) { title = 'No clear leader · ' + a + ' looks expensive'; col = '#8b98a5'; sub = `No clear trend, and ${a} is on the expensive side against ${b} within its range.`; }
+    else { title = 'No clear leader'; col = '#8b98a5'; sub = `The indicators do not agree and nothing is stretched. There is no edge in favouring one over the other right now.`; }
+  }
+  const dom = Math.max(y.bull, y.bear);
+  let conf = dom >= 4 ? 2 : dom === 3 ? 1 : 0;
+  if (y.avail < 5) conf--;
+  if (rg && (rg.r2 < 0.3 || rg.n < 24)) conf--;
+  const dt = dailyTrend(h);
+  if (dt && dt.dir !== 0 && Math.abs(T) > TH && dt.dir !== Math.sign(T)) conf--;
+  const confTxt = ['LOW', 'MEDIUM', 'HIGH'][clamp(conf, 0, 2)];
+  const badge = x => {
+    if (x.vote == null) return '<span class="badge b-mid">No data</span>';
+    const st = x.kind === 'stretch';
+    if (x.vote > TH) return `<span class="badge b-up">${st ? 'Cheap side' : 'Bullish'}</span>`;
+    if (x.vote < -TH) return `<span class="badge b-down">${st ? 'Stretched up' : 'Bearish'}</span>`;
+    return '<span class="badge b-mid">Neutral</span>';
+  };
+  const rowsHtml = R.map(x => `<tr><td><b>${x.name}</b><br><span class="status" style="margin:0">${x.kind === 'trend' ? 'trend' : 'stretch'}</span></td><td>${badge(x)}</td><td>${x.text}</td></tr>`).join('');
+
+  const notes = [];
+  if (dt) notes.push(dailyNote(dt, T));
+  // what moved: A in USD, B in USD, and the ratio
+  const first = h[idx[0]], last = h[h.length - 1], pc = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + '%';
+  if (first && idx.length > 1) {
+    const pa = (last.a / first.a - 1) * 100, pb = (last.b / first.b - 1) * 100, pr = (last.p / first.p - 1) * 100;
+    let why = '';
+    if (A !== 'USD' && B !== 'USD') why = Math.abs(pb) >= 0.5 * Math.abs(pa) && Math.abs(pb) > 0.3 ? ` ${b}'s own move against the dollar explains a large part of the change.` : ` Most of the change comes from ${a} itself.`;
+    notes.push(`<b>What moved (this period):</b> ${a} ${pc(pa)} in dollars, ${b} ${pc(pb)} in dollars, so ${a} measured in ${b} changed ${pc(pr)}.${why}`);
+  }
+  const ps = h.slice(idx[0]).map(x => x.p), lo = Math.min(...ps), hi = Math.max(...ps);
+  if (hi > lo) notes.push(`<b>Position in range:</b> the ratio is at ${Math.round((last.p - lo) / (hi - lo) * 100)}% of its range for this period (0% = lowest, 100% = highest).`);
+  notes.push(pairText(A, B));
+  if (y.vol != null) notes.push(y.vol > 1.3 ? `<b>Risk:</b> the bands are wide (${y.vol.toFixed(1)}× their usual width): the ratio swings a lot, so keep positions small.`
+    : y.vol < 0.7 ? `<b>Risk:</b> the bands are squeezed (${y.vol.toFixed(1)}× their usual width): quiet now, a bigger move often follows, direction unknown.`
+    : `<b>Risk:</b> volatility of the ratio is normal (${y.vol.toFixed(1)}× its usual band width).`);
+  if (T > TH && y.s != null) notes.push(`<b>The view weakens</b> if the ratio falls below its slow average (${fmtR(y.s)})${y.lo != null ? ' or the lower band (' + fmtR(y.lo) + ')' : ''}.`);
+  if (T < -TH && y.s != null) notes.push(`<b>The view weakens</b> if the ratio rises above its slow average (${fmtR(y.s)})${y.up != null ? ' or the upper band (' + fmtR(y.up) + ')' : ''}.`);
+  notes.push('<b>How to use a ratio:</b> it tells you which of two assets is stronger, not whether either will rise in dollars. Both can fall while the ratio rises. Use it to choose between two assets or to understand a move, and keep using the single-asset pages for timing and risk.');
+  notes.push('<b>Before acting:</b> central-bank decisions, US inflation and jobs reports, and sudden news can move both assets at once. No indicator sees them coming.');
+
+  const sc = y.score, pos = clamp((sc + 100) / 2, 2, 98);
+  box.innerHTML =
+    `<div class="verdict" style="border-left-color:${col}"><div class="vt" style="color:${col}">${title}</div><div class="vs">${sub}</div></div>` +
+    `<div class="gauge"><i style="left:${pos}%"></i></div><div class="gscale"><span>${b} leads −100</span><span>Score <b>${sc > 0 ? '+' : ''}${sc}</b></span><span>+100 ${a} leads</span></div>` +
+    `<div class="stats">Indicators agreeing: <b class="up">${y.bull} bullish</b> · <b>${y.avail - y.bull - y.bear} neutral</b> · <b class="down">${y.bear} bearish</b> · Confidence: <b>${confTxt}</b></div>` +
+    `<table class="syn"><tr><th>Indicator</th><th>Signal</th><th>What it says now</th></tr>${rowsHtml}</table>` +
+    `<ul class="synlist">${notes.map(n => '<li>' + n + '</li>').join('')}</ul>`;
+}
+
+// ---------------- header and table ----------------
+function renderHeader(ind) {
+  const h = series, last = h.length ? h[h.length - 1] : null;
+  document.getElementById('what').textContent = A === B ? '' : `1 unit of ${nm(A)} = ${last ? fmtR(last.p) : '–'} ${nm(B)}` + (A === 'USD' || B === 'USD' ? '' : `  (${nm(A)} ${fmtR(last ? last.a : null)} USD ÷ ${nm(B)} ${fmtR(last ? last.b : null)} USD)`);
+  document.getElementById('price').textContent = last ? fmtR(last.p) : '–';
+  const prev = h.length > 1 ? h[h.length - 2].p : null, chg = document.getElementById('chg');
+  if (last && prev) { const d = (last.p / prev - 1) * 100; chg.textContent = (d >= 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(2) + '% vs previous hour'; chg.className = d >= 0 ? 'up' : 'down'; } else chg.textContent = '';
+  const pe = document.getElementById('pchg'); pe.textContent = '';
+}
+function renderTable(h, ind, idx) {
+  const rowsHtml = idx.slice(-500).reverse().map(i => {
+    const s = ind.slow[i], diff = s == null ? null : (ind.p[i] / s - 1) * 100;
+    return `<tr><td>${stamp(h[i].t)}</td><td>${fmtR(h[i].a)}</td><td>${fmtR(h[i].b)}</td><td>${fmtR(ind.p[i])}</td><td>${fmtR(ind.fast[i])}</td><td>${fmtR(s)}</td>` +
+      `<td class="${diff == null ? '' : diff >= 0 ? 'up' : 'down'}">${diff == null ? '–' : (diff >= 0 ? '+' : '') + diff.toFixed(2) + '%'}</td><td>${ind.rsi[i] == null ? '–' : ind.rsi[i].toFixed(1)}</td></tr>`;
+  }).join('');
+  document.getElementById('table').innerHTML =
+    `<tr><th>Time</th><th>${nm(A)} (USD)</th><th>${nm(B)} (USD)</th><th>Ratio</th><th>Fast ${maFast}h</th><th>Slow ${maSlow}h</th><th>vs slow</th><th>RSI</th></tr>` + rowsHtml;
+  document.getElementById('ttitle').textContent = `${nm(A)} in ${nm(B)} – hourly (${idx.length} rows${idx.length > 500 ? ', showing latest 500 – CSV has all' : ''})`;
+}
+function renderAll() {
+  buildSeries();
+  const { h, ind, idx } = renderCharts();
+  renderHeader(ind); renderTable(h, ind, idx);
+}
+
+// ---------------- controls ----------------
+function fillSelects() {
+  const opts = ASSETS.map(a => `<option value="${a.key}">${a.name}</option>`).join('');
+  document.getElementById('selA').innerHTML = opts; document.getElementById('selB').innerHTML = opts;
+  document.getElementById('selA').value = A; document.getElementById('selB').value = B;
+  document.getElementById('presets').innerHTML = PRESETS.map((p, i) => `<button class="alt" data-i="${i}">${p[2]}</button>`).join('');
+}
+function setPair(a, b) { A = a; B = b; store.set('rt_a', A); store.set('rt_b', B); document.getElementById('selA').value = A; document.getElementById('selB').value = B; markPresets(); renderAll(); }
+function markPresets() { document.querySelectorAll('#presets button').forEach(btn => { const p = PRESETS[btn.dataset.i]; btn.classList.toggle('sel', p[0] === A && p[1] === B); }); }
+document.getElementById('selA').onchange = e => setPair(e.target.value, B);
+document.getElementById('selB').onchange = e => setPair(A, e.target.value);
+document.getElementById('swap').onclick = () => setPair(B, A);
+document.getElementById('presets').onclick = e => { const i = e.target.dataset.i; if (i != null) setPair(PRESETS[i][0], PRESETS[i][1]); };
+document.querySelectorAll('#ranges button').forEach(b => b.onclick = () => { rangeDays = Number(b.dataset.days); store.set('rt_range', rangeDays); renderAll(); });
+function bindSelect(id, get, set, key, num) {
+  const el = document.getElementById(id); el.value = String(get());
+  el.onchange = () => { const v = num ? Number(el.value) : el.value; set(v); store.set(key, v); renderAll(); };
+}
+bindSelect('matype', () => maType, v => maType = v, 'rt_matype', false);
+bindSelect('mafast', () => maFast, v => maFast = v, 'rt_mafast', true);
+bindSelect('maslow', () => maSlow, v => maSlow = v, 'rt_maslow', true);
+bindSelect('rsin',   () => rsiN,   v => rsiN = v,   'rt_rsin', true);
+
+document.getElementById('csv').onclick = async () => {
+  const h = series, ind = indicators(h.map(x => x.p));
+  if (!h.length) { alert('No rows yet.'); return; }
+  const n = v => v ?? '';
+  const lines = ['Time,' + A + ' (USD),' + B + ' (USD),Ratio ' + A + '/' + B + ',Fast ' + maType + ' ' + maFast + 'h,Slow ' + maType + ' ' + maSlow + 'h,RSI']
+    .concat(h.map((x, i) => [stamp(x.t), x.a, x.b, x.p, n(ind.fast[i]), n(ind.slow[i]), n(ind.rsi[i])].join(',')));
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv' });
+  const name = 'ratio_' + A + '_in_' + B + '_' + stamp(Date.now()).slice(0, 10) + '.csv';
+  await saveBlob(blob, name);
+};
+
+// ---------------- start ----------------
+async function refresh() {
+  if (await loadData()) {
+    showStale(rows, ['XAU','XAG','XPT','CHF','EUR','JPY','GBP','BTC','ETH'].filter(k => k === A || k === B));
+    setStatus('Last saved row: ' + (rows.length ? stamp(rows[rows.length - 1].t) : '–') + ' · checked ' + new Date().toLocaleTimeString() + ' · weekend hours are skipped when a metal or currency is involved');
+    renderAll();
+  }
+}
+fillSelects(); markPresets();
+refresh();
+setInterval(refresh, 5 * 60 * 1000);
+</script>
+</body>
+</html>
