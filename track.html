@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track record – did the verdicts work?</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --text:#e6edf3; --muted:#8b98a5; --line:#2b3540; --blue:#2f6feb; --up:#3fb950; --down:#f85149; --warn:#f0883e; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:12px; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; max-width:1000px; margin:0 auto; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  h2 { font-size:.95rem; margin:0 0 6px; }
+  a { color:#4dabf7; }
+  .status { color:var(--muted); font-size:.8rem; margin-bottom:8px; line-height:1.45; }
+  .card { background:var(--card); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  button { background:#2b3540; color:#fff; border:0; border-radius:6px; padding:8px 14px; font-size:.85rem; }
+  button.sel { background:var(--blue); }
+  p { line-height:1.5; font-size:.88rem; margin:6px 0; }
+  .warn { color:var(--warn); }
+  .up { color:var(--up); } .down { color:var(--down); } .mut { color:var(--muted); }
+  .wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table { border-collapse:collapse; width:100%; font-size:.82rem; white-space:nowrap; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:600; }
+  tr.few td { opacity:.6; }
+  tr.base td { color:var(--muted); font-style:italic; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.75rem; font-weight:700; white-space:nowrap; }
+  .b-BUY { background:rgba(63,185,80,.2); color:#3fb950; } .b-SELL { background:rgba(248,81,73,.2); color:#f85149; }
+  .b-HOLD, .b-WAIT { background:rgba(240,136,62,.2); color:#f0883e; } .b-NEUTRAL { background:#2b3540; color:var(--muted); }
+  .now { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+  .now a { display:block; text-decoration:none; color:var(--text); background:#121820; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:.85rem; }
+  .now a small { display:block; color:var(--muted); font-size:.74rem; margin-top:2px; }
+  details { border-top:1px solid var(--line); padding:6px 0; }
+  summary { cursor:pointer; font-size:.9rem; padding:4px 0; }
+  .concl { border-left:5px solid var(--muted); background:#121820; border-radius:8px; padding:10px 12px; margin:8px 0; font-size:.9rem; line-height:1.5; }
+</style>
+</head>
+<body>
+<h1>Track record: did the verdicts work?</h1>
+<div class="status"><a href="currencies.html">Currencies</a> · <a href="metals.html">Metals</a> · <a href="crypto.html">Crypto</a> · <a href="ratio.html">Ratio</a> · <a href="health.html">Data health</a> · <a href="start.html">Start</a></div>
+
+<div class="card">
+  <h2>What this page measures</h2>
+  <p>Each analysis page shows a verdict (BUY, HOLD, SELL, WAIT or NEUTRAL). Here the same verdict is rebuilt for <b>every past hour</b> from your saved prices, using only what was known at that hour (no peeking at the future). Then we look at what the price did <b>24 hours, 72 hours and 168 hours (one week) later</b>.</p>
+  <p>The default settings of each page are used. The rules were reasoned in advance, not adjusted to fit this history. Even so, treat the result as a first impression, not proof: the history is short, the hours overlap (a verdict that lasts 20 hours is counted 20 times, which makes results look more reliable than they are), and assets measured against the same dollar often move together.</p>
+  <p><b>Edge</b> = the average return after this verdict minus the average return after any hour. A BUY verdict is useful if its edge is positive, a SELL verdict if its edge is negative.</p>
+</div>
+
+<div id="msg" class="card" style="display:none"></div>
+
+<div id="main" style="display:none">
+  <div class="card">
+    <h2>Verdict right now</h2>
+    <div class="now" id="now"></div>
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <strong>Look at the price after:</strong>
+      <span id="hz" style="display:flex;gap:6px">
+        <button data-h="24">24 hours</button><button data-h="72" class="sel">72 hours</button><button data-h="168">1 week</button>
+      </span>
+    </div>
+    <div class="status" id="span"></div>
+    <h2>All assets together</h2>
+    <div class="concl" id="concl"></div>
+    <div class="wrap"><table id="pooled"></table></div>
+    <div class="status" style="margin-top:6px">Mean = average price change after the verdict. Right = share of cases where the price moved the way the verdict suggests (BUY: rose, SELL: fell; for HOLD, WAIT and NEUTRAL the share that rose). ⚠ = fewer than 20 separate episodes: too few to conclude. “Episodes” are runs of consecutive hours with the same verdict.</div>
+  </div>
+
+  <div class="card">
+    <h2>Asset by asset</h2>
+    <div id="assets"></div>
+  </div>
+</div>
+
+<script>
+const NAMES = { XAU:'Gold', XAG:'Silver', XPT:'Platinum', CHF:'Swiss franc', EUR:'Euro', JPY:'Japanese yen', GBP:'British pound', BTC:'Bitcoin', ETH:'Ethereum' };
+const PAGE = { metal:'metals.html', currency:'currencies.html', crypto:'crypto.html' };
+const CLASSES = ['BUY', 'HOLD', 'SELL', 'WAIT', 'NEUTRAL'];
+const MEANING = { BUY:'uptrend, not stretched', HOLD:'uptrend, stretched', SELL:'downtrend, not cheap', WAIT:'downtrend, cheap side', NEUTRAL:'no clear trend' };
+let T = null, H = 72;
+
+const pct = (v, d = 2) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d) + '%';
+const pp = v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(2) + ' pts';
+const day = t => new Date(t).toLocaleDateString([], { year:'numeric', month:'short', day:'numeric' });
+const ago = t => { const h = (Date.now() - t) / 3600000; return h < 1.5 ? 'just now' : h < 48 ? Math.round(h) + ' h ago' : Math.round(h / 24) + ' days ago'; };
+
+function pool(list) {                                  // add up the numbers of several assets
+  const out = { base:{ n:0, sum:0, pos:0, neg:0 }, classes:{} };
+  CLASSES.forEach(c => out.classes[c] = { hours:0, episodes:0, st:{ n:0, sum:0, pos:0, neg:0 } });
+  list.forEach(a => {
+    const b = a.baseline['h' + H]; ['n', 'sum', 'pos', 'neg'].forEach(k => out.base[k] += b[k]);
+    CLASSES.forEach(c => {
+      const x = a.classes[c], o = out.classes[c];
+      o.hours += x.hours; o.episodes += x.episodes;
+      ['n', 'sum', 'pos', 'neg'].forEach(k => o.st[k] += x['h' + H][k]);
+    });
+  });
+  return out;
+}
+const good = (c, edge) => c === 'BUY' || c === 'WAIT' ? edge > 0 : c === 'SELL' ? edge < 0 : null;
+
+function tableHTML(p) {
+  const bm = p.base.n ? p.base.sum / p.base.n * 100 : null;
+  let h = '<tr><th>Verdict</th><th>Hours</th><th>Episodes</th><th>Mean</th><th>Right</th><th>Edge</th></tr>';
+  CLASSES.forEach(c => {
+    const o = p.classes[c], n = o.st.n;
+    if (!o.hours) { h += `<tr class="few"><td><span class="badge b-${c}">${c}</span></td><td>0</td><td>0</td><td>–</td><td>–</td><td>–</td></tr>`; return; }
+    const m = n ? o.st.sum / n * 100 : null, right = n ? (c === 'SELL' ? o.st.neg : o.st.pos) / n * 100 : null;
+    const edge = m != null && bm != null ? m - bm : null, g = edge == null ? null : good(c, edge);
+    h += `<tr class="${o.episodes < 20 ? 'few' : ''}"><td><span class="badge b-${c}">${c}</span> <span class="mut" style="font-size:.72rem">${MEANING[c]}</span></td><td>${o.hours}</td><td>${o.episodes}${o.episodes < 20 ? ' ⚠' : ''}</td>` +
+      `<td>${m == null ? '–' : pct(m)}</td><td>${right == null ? '–' : right.toFixed(0) + '%'}</td><td class="${g == null ? '' : g ? 'up' : 'down'}">${edge == null ? '–' : pp(edge)}</td></tr>`;
+  });
+  h += `<tr class="base"><td>Any hour (average)</td><td>${p.base.n}</td><td>–</td><td>${bm == null ? '–' : pct(bm)}</td><td>${p.base.n ? (p.base.pos / p.base.n * 100).toFixed(0) + '%' : '–'}</td><td>–</td></tr>`;
+  return h;
+}
+
+function conclusion(p) {
+  const bm = p.base.n ? p.base.sum / p.base.n * 100 : null, B = p.classes.BUY, S = p.classes.SELL;
+  const hl = H === 168 ? 'one week' : H + ' hours';
+  if (bm == null || !B.st.n || !S.st.n) return { text:'Not enough data yet to compare the verdicts.', col:'#8b98a5' };
+  const eB = B.st.sum / B.st.n * 100 - bm, eS = S.st.sum / S.st.n * 100 - bm;
+  const caveat = ' This is a small, overlapping sample from a short history, so even a good-looking result is not proof. Keep watching as the history grows.';
+  const nums = `After <b>BUY</b> the price changed on average ${pct(B.st.sum / B.st.n * 100)} over ${hl} (${pp(eB)} versus an average hour); after <b>SELL</b> ${pct(S.st.sum / S.st.n * 100)} (${pp(eS)}).`;
+  if (B.episodes < 20 || S.episodes < 20)
+    return { text:nums + ' <span class="warn">There are fewer than 20 separate BUY or SELL episodes, so it is too early to conclude anything.</span>' + caveat, col:'#f0883e' };
+  if (eB > 0 && eS < 0) return { text:nums + ' <b class="up">In this history the verdicts pointed in the right direction on average.</b>' + caveat, col:'#3fb950' };
+  if (eB <= 0 && eS >= 0) return { text:nums + ' <b class="down">In this history the verdicts did not help: BUY did no better and SELL no worse than an average hour.</b> Do not rely on them alone.' + caveat, col:'#f85149' };
+  return { text:nums + ' <b class="warn">Mixed result: only one of the two verdicts pointed in the right direction.</b>' + caveat, col:'#f0883e' };
+}
+
+function render() {
+  const list = Object.entries(T.assets);
+  const all = pool(list.map(x => x[1]));
+  const c = conclusion(all);
+  const concl = document.getElementById('concl'); concl.innerHTML = c.text; concl.style.borderLeftColor = c.col;
+  document.getElementById('pooled').innerHTML = tableHTML(all);
+  const first = Math.min(...list.map(x => x[1].first)), last = Math.max(...list.map(x => x[1].last)), hours = list.reduce((s, x) => s + x[1].hours, 0);
+  document.getElementById('span').textContent = `${list.length} assets · ${hours} hourly verdicts · history from ${day(first)} to ${day(last)} · computed ${ago(T.t)}`;
+  document.getElementById('assets').innerHTML = list.map(([k, a]) => {
+    const p = pool([a]);
+    return `<details><summary><b>${NAMES[k] || k}</b> <span class="mut">· ${a.hours} hours · now </span><span class="badge b-${a.now ? a.now.class : 'NEUTRAL'}">${a.now ? a.now.class : '–'}</span></summary><div class="wrap"><table>${tableHTML(p)}</table></div></details>`;
+  }).join('');
+  document.querySelectorAll('#hz button').forEach(b => b.classList.toggle('sel', Number(b.dataset.h) === H));
+}
+
+function renderNow() {
+  document.getElementById('now').innerHTML = Object.entries(T.assets).map(([k, a]) => {
+    const n = a.now; if (!n) return '';
+    return `<a href="${PAGE[a.group] || 'start.html'}"><b>${NAMES[k] || k}</b> <span class="badge b-${n.class}" style="float:right">${n.class}</span><small>score ${n.score > 0 ? '+' : ''}${n.score} · ${ago(n.t)}</small></a>`;
+  }).join('');
+}
+
+document.getElementById('hz').onclick = e => { const h = Number(e.target.dataset.h); if (h) { H = h; render(); } };
+
+async function start() {
+  const msg = document.getElementById('msg');
+  try {
+    const r = await fetch('data/track.json', { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    T = await r.json();
+    if (!T.assets || !Object.keys(T.assets).length) throw new Error('empty');
+  } catch (e) {
+    msg.style.display = '';
+    msg.innerHTML = '<b>No track record yet.</b><p>On GitHub, open <b>Actions</b>, choose <b>Collect prices</b>, press <b>Run workflow</b> once, wait about a minute, then reload this page. If it is still missing, the history may be too short (at least 60 hourly prices per asset are needed), or you may have opened this page as a local file instead of from your GitHub page link.</p>';
+    return;
+  }
+  document.getElementById('main').style.display = '';
+  renderNow(); render();
+}
+start();
+</script>
+</body>
+</html>
