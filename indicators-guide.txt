@@ -265,6 +265,97 @@ force a trade.
 
 
 ---------------------------------------------------------------------
+ THE THREE ANALYSIS PAGES
+---------------------------------------------------------------------
+currencies.html (CHF, EUR, JPY, GBP), metals.html (gold, silver,
+platinum) and crypto.html (Bitcoin, Ethereum) all have the same 6 charts,
+the synthesis panel, alerts and table. Each is tuned to its market:
+
+  CURRENCIES  Closed on weekends (those hours are skipped). Range-bound
+              markets, so the "cheap or expensive" side counts a bit more.
+              The page adds a DOLLAR CHECK: if all four currencies move the
+              same way, it is the dollar moving, not one country.
+  METALS      Closed on weekends. The page adds the gold/silver ratio and
+              the platinum/gold ratio. Silver and platinum swing more than
+              gold because industry also drives them.
+  CRYPTO      Open 24/7, no weekend gaps. Trends run further, so the trend
+              indicators count more, RSI uses 25 / 75 as its limits, and
+              the default averages are faster (12 / 48, exponential). The
+              page adds the ETH/BTC ratio. Swings are far larger: use
+              smaller positions.
+
+These tunings are reasoned choices, not proven ones. Judge them with the
+Backtest chart and your own record of signals.
+
+
+---------------------------------------------------------------------
+ THE RATIO PAGE (ratio.html)
+---------------------------------------------------------------------
+Measures one asset in another: gold in euros, gold in Bitcoin, ETH in
+BTC, gold/silver... Pick the two assets, or tap a preset.
+
+WHY IT IS USEFUL
+  - It removes the dollar. If gold rises in dollars but not in euros,
+    the dollar was the main reason.
+  - It shows which of two assets is stronger (rising ratio = the first
+    one gains on the second), which helps to choose between them.
+  - Gold against Bitcoin works as a mood gauge: safe haven versus risk.
+  - It shows your purchasing power in the money you actually use.
+
+LIMITS
+  - It does not tell you whether either asset will rise in dollars.
+    Both can fall while the ratio rises.
+  - Links between assets change and can break for months.
+  - It is just another price chart: the same indicators apply, and the
+    same limits too.
+
+The page shows the ratio with two averages and Bollinger Bands, the RSI
+of the ratio, an advice panel (which asset leads, how stretched the
+ratio is, what moved, where the view weakens) and an hourly table.
+
+
+---------------------------------------------------------------------
+ EXTRA TOOLS ON THE ANALYSIS PAGES
+---------------------------------------------------------------------
+DAILY VIEW
+  Besides the hourly verdict, the advice panel looks at the DAILY trend
+  (price against its 50-day average, and the 20-day against the 50-day
+  average). When the hourly view goes against the daily trend, the
+  confidence drops: such a move is usually only short-term. It needs
+  about two months of saved history.
+
+DOLLAR CHECK
+  On the metals and crypto pages, a basket of euro, yen, pound and franc
+  (weighted like the dollar index) shows whether the dollar was
+  stronger or weaker over the chosen period. A stronger dollar tends to
+  weigh on gold and crypto, but other news often breaks this link.
+
+RISK CALCULATOR
+  Enter your capital, the percentage you accept to lose, your entry price
+  and your exit (stop) price. It gives the size of the position, the
+  maximum loss if the exit is hit, and prices for gains of 1x and 2x the
+  risk. It warns when the position is larger than your capital (that needs
+  borrowing, which multiplies losses). It is arithmetic only.
+
+OLD-DATA WARNING
+  A red or orange banner appears when the saved prices are old, for
+  example because the collector stopped. Weekends are taken into account
+  for metals and currencies.
+
+TRACK RECORD (track.html)
+  Rebuilds the verdict for every past hour from the saved prices, using
+  only what was known at that hour, and shows what the price did 24
+  hours, 72 hours and a week later. A BUY verdict is only useful if the
+  price did better afterwards than after an average hour, and a SELL
+  verdict if it did worse. Hours overlap and the history is short, so it
+  is a first impression, not proof.
+
+DATA HEALTH (health.html)
+  Shows how old the last price is, which source each price came from, and
+  gaps in the history for every asset, with a plain-English OK or Check.
+
+
+---------------------------------------------------------------------
  THINGS NO INDICATOR CAN SEE
 ---------------------------------------------------------------------
 - Central bank interest-rate decisions (US Fed, ECB, Bank of England,
