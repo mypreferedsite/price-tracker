@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metals – 6 charts &amp; alerts</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>')</script>
+<script>window.Chart || document.write('<script src="lib/chart.umd.min.js"><\/script>')</script>
+<script src="core.js"></script>
+<script>if (typeof computeInd === 'undefined') document.addEventListener('DOMContentLoaded', () => { document.body.innerHTML = '<p style="padding:16px;font-family:sans-serif;color:#f85149">The file core.js is missing. Add it to the same folder as this page on GitHub.</p>'; });</script>
+<style>
+  :root { --bg:#0f1419; --card:#1a2129; --text:#e6edf3; --muted:#8b98a5; --line:#2b3540; --blue:#2f6feb; --up:#3fb950; --down:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:12px; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  h2 { font-size:.95rem; margin:0 0 2px; }
+  .status { color:var(--muted); font-size:.8rem; margin-bottom:8px; }
+  .card { background:var(--card); border-radius:10px; padding:10px; margin-bottom:12px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  button { background:var(--blue); color:#fff; border:0; border-radius:6px; padding:7px 12px; font-size:.85rem; }
+  button.alt { background:#2b3540; }
+  button.sel { background:var(--blue) !important; }
+  button.chip { padding:8px 12px; border-radius:18px; border:2px solid transparent; }
+  button.chip.sel { border-color:currentColor; }
+  select, input[type=number] { background:#2b3540; color:var(--text); border:0; border-radius:6px; padding:7px; font-size:.9rem; }
+  input[type=number] { width:110px; }
+  label { font-size:.85rem; color:var(--muted); }
+  .big { display:flex; flex-wrap:wrap; gap:14px; align-items:baseline; margin-bottom:8px; }
+  .big .price { font-size:1.7rem; font-weight:700; }
+  .big span { color:var(--muted); font-size:.85rem; }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .cbox { position:relative; height:26vh; min-height:190px; }
+  .cbox.tall { height:40vh; min-height:270px; }
+  .tablewrap { overflow:auto; height:42vh; min-height:200px; -webkit-overflow-scrolling:touch; }
+  table { border-collapse:collapse; width:100%; font-size:.78rem; white-space:nowrap; }
+  th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; position:sticky; left:0; background:var(--card); }
+  th { position:sticky; top:0; background:var(--card); color:var(--muted); font-weight:600; }
+  #banner { position:sticky; top:0; z-index:10; }
+  .alertmsg { background:#7a2e0e; border:1px solid #f0883e; border-radius:8px; padding:10px; margin-bottom:8px; display:flex; justify-content:space-between; gap:10px; align-items:center; }
+  .alertlist div.item { display:flex; flex-wrap:wrap; justify-content:space-between; gap:6px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); font-size:.85rem; }
+  .done { color:var(--muted); }
+  .stats { font-size:.85rem; margin-top:6px; line-height:1.5; }
+  .warn { color:#f0883e; }
+  .verdict { border-radius:10px; padding:10px 12px; margin:8px 0; border-left:6px solid var(--muted); background:#121820; }
+  .verdict .vt { font-size:1.15rem; font-weight:700; }
+  .verdict .vs { font-size:.85rem; margin-top:4px; line-height:1.45; }
+  .gauge { position:relative; height:12px; border-radius:6px; background:linear-gradient(90deg,#f85149,#3a444f 50%,#3fb950); margin:14px 0 4px; }
+  .gauge i { position:absolute; top:-4px; width:4px; height:20px; background:#fff; border-radius:2px; transform:translateX(-50%); }
+  .gscale { display:flex; justify-content:space-between; font-size:.7rem; color:var(--muted); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:.75rem; font-weight:600; white-space:nowrap; }
+  .b-up { background:rgba(63,185,80,.2); color:#3fb950; } .b-down { background:rgba(248,81,73,.2); color:#f85149; } .b-mid { background:#2b3540; color:var(--muted); }
+  table.syn { margin-top:6px; }
+  .syn th, .syn td { text-align:left; white-space:normal; position:static; vertical-align:top; }
+  .syn th:first-child, .syn td:first-child { position:static; }
+  .synlist { font-size:.85rem; line-height:1.5; margin:8px 0 0; padding-left:18px; }
+</style>
+</head>
+<body>
+<div id="stale"></div>
+<div id="banner"></div>
+<h1>Metals: gold, silver and platinum in US dollars</h1>
+<div class="status"><a href="currencies.html" style="color:#4dabf7">Currencies</a> · <a href="metals.html" style="color:#4dabf7">Metals</a> · <a href="crypto.html" style="color:#4dabf7">Crypto</a> · <a href="index.html" style="color:#4dabf7">Overview</a> · <a href="start.html" style="color:#4dabf7">Start</a></div>
+<div class="status" id="status">Loading…</div>
+
+<!-- ======== selection and settings ======== -->
+<div class="card">
+  <div class="row" id="assets"></div>
+  <div class="big">
+    <div class="price" id="price">–</div>
+    <span id="chg"></span>
+    <span id="mainfo"></span>
+  </div>
+  <div class="row">
+    <span id="ranges" style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="alt" data-days="1">Day</button>
+      <button class="alt" data-days="7">Week</button>
+      <button class="alt" data-days="30">Month</button>
+      <button class="alt" data-days="365">Year</button>
+      <button class="alt" data-days="0">All</button>
+    </span>
+  </div>
+  <div class="row">
+    <label>Average type
+      <select id="matype"><option value="SMA">Simple (SMA)</option><option value="EMA">Exponential (EMA)</option></select>
+    </label>
+    <label>Fast (hours)
+      <select id="mafast"><option>5</option><option>10</option><option>12</option><option>20</option><option>24</option><option>30</option></select>
+    </label>
+    <label>Slow (hours)
+      <select id="maslow"><option>20</option><option>30</option><option>48</option><option>50</option><option>72</option><option>100</option><option>200</option></select>
+    </label>
+    <label>RSI (hours)
+      <select id="rsin"><option>7</option><option>14</option><option>21</option></select>
+    </label>
+    <label>Bands (hours)
+      <select id="bbn"><option>10</option><option>20</option><option>50</option></select>
+    </label>
+    <label>Bands width
+      <select id="bbk"><option value="1.5">1.5</option><option value="2">2</option><option value="2.5">2.5</option></select>
+    </label>
+    <label>Trend channel (σ)
+      <select id="regk"><option value="1">1</option><option value="1.5">1.5</option><option value="2">2</option></select>
+    </label>
+  </div>
+  <div class="status" id="hint" style="margin:0"></div>
+  <div class="status" style="margin:4px 0 0">The market is closed on weekends, so weekend hours are skipped in all charts and indicators.</div>
+</div>
+
+<!-- ======== trader synthesis ======== -->
+<div class="card" id="synth">
+  <h2>Trader's synthesis · the 5 indicators together</h2>
+  <div class="status" id="synintro"></div>
+  <div class="status">Trend indicators (averages, MACD, regression line) give the direction. Stretch indicators (RSI, Bollinger Bands, distance from the regression line) say whether the price is cheap or expensive now. Not financial advice.</div>
+  <div id="synbody">Loading…</div>
+</div>
+<div id="riskcard"></div>
+
+<!-- ======== zoom bar (stays on screen while you scroll the charts) ======== -->
+<div id="zoombar" style="position:sticky;top:0;z-index:9;background:var(--bg);padding:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+  <span style="font-size:.85rem;color:var(--muted)">Zoom all charts:</span>
+  <button class="alt" id="zsel">🔍 Select area: off</button>
+  <button class="alt" id="zin">＋</button>
+  <button class="alt" id="zout">－</button>
+  <button class="alt" id="zleft">◀</button>
+  <button class="alt" id="zright">▶</button>
+  <button class="alt" id="zreset">Reset zoom</button>
+</div>
+<div class="status" id="zinfo"></div>
+
+<!-- ======== chart 1 ======== -->
+<div class="card">
+  <h2>1 · Price with two moving averages</h2>
+  <div class="status">▲ green = fast average crosses above slow (possible buy), ▼ red = crosses below (possible sell). Dashed orange lines = your price alerts.</div>
+  <div class="cbox tall"><canvas id="c1"></canvas></div>
+</div>
+
+<!-- ======== chart 2 ======== -->
+<div class="card">
+  <h2>2 · RSI</h2>
+  <div class="status">Above 70: price rose fast and may be stretched. Below 30: it fell fast. Scale 0–100.</div>
+  <div class="cbox"><canvas id="c2"></canvas></div>
+</div>
+
+<!-- ======== chart 3 ======== -->
+<div class="card">
+  <h2>3 · MACD (12 / 26 / 9 hours)</h2>
+  <div class="status">MACD line crossing above its signal line = momentum turning up; below = turning down. Bars = the gap between them.</div>
+  <div class="cbox"><canvas id="c3"></canvas></div>
+</div>
+
+<!-- ======== chart 4 ======== -->
+<div class="card">
+  <h2>4 · Bollinger Bands</h2>
+  <div class="status">The band widens when the price swings a lot. Price near the upper band = stretched up; near the lower = stretched down.</div>
+  <div class="cbox"><canvas id="c4"></canvas></div>
+</div>
+
+<!-- ======== chart 5 ======== -->
+<div class="card">
+  <h2>5 · Linear regression (trend line)</h2>
+  <div class="status">A straight line fitted to the price over the selected period (Day, Week, Month…), with a channel around it. Price above the channel = well above its trend; below = well below.</div>
+  <div class="cbox"><canvas id="c6"></canvas></div>
+  <div class="stats" id="regstats"></div>
+  <div class="status" style="margin-top:6px">The line only describes the past period. Extending it forward is an extrapolation, not a forecast.</div>
+</div>
+
+<!-- ======== chart 6 ======== -->
+<div class="card">
+  <h2>6 · Backtest on your saved history</h2>
+  <div class="row">
+    <label>Rule
+      <select id="rule">
+        <option value="ma">Buy when fast avg &gt; slow avg, sell otherwise</option>
+        <option value="rsi">Buy when RSI &lt; 30, sell when RSI &gt; 70</option>
+        <option value="macd">Buy when MACD &gt; signal, sell otherwise</option>
+        <option value="bb">Buy below lower band, sell above middle band</option>
+      </select>
+    </label>
+    <label>Cost per trade (%)
+      <input type="number" id="cost" step="0.01" min="0" value="0.05">
+    </label>
+  </div>
+  <div class="status">Starts with 100 at the beginning of the selected period. Long only (in the asset or in cash). Orange = the rule, grey = just holding the asset.</div>
+  <div class="cbox"><canvas id="c5"></canvas></div>
+  <div class="stats" id="btstats"></div>
+  <div class="status" style="margin-top:6px">A backtest shows what <b>would have</b> happened. It does not predict the future, and trying many settings until the result looks good gives results that will not repeat.</div>
+</div>
+
+<!-- ======== alerts ======== -->
+<div class="card">
+  <strong>Price alerts</strong>
+  <div class="row" style="margin-top:8px">
+    <select id="atype">
+      <option value="above">Price rises to or above</option>
+      <option value="below">Price falls to or below</option>
+      <option value="cross">Price crosses the slow average</option>
+      <option value="fastslow">Fast average crosses the slow average</option>
+    </select>
+    <input type="number" id="aprice" step="any" placeholder="USD price">
+    <button id="aadd">Add alert</button>
+    <button class="alt" id="anotif">Enable notifications</button>
+  </div>
+  <div class="status">Alerts are checked every minute <b>while this page is open</b>. Gold, silver and platinum use a live price when available; otherwise the latest saved price (updated every 30 minutes).</div>
+  <div class="alertlist" id="alerts"></div>
+</div>
+
+<!-- ======== table ======== -->
+<div class="card">
+  <div class="row">
+    <strong id="ttitle">Hourly prices</strong>
+    <button id="csv">Download CSV</button>
+  </div>
+  <div class="tablewrap"><table id="table"></table></div>
+</div>
+
+<script>
+// ---------------- configuration ----------------
+const GROUP = "metals";
+const ASSETS = [
+  { key:"XAU", name:"Gold (oz)", color:"#f5c518", live:"goldapi" },
+  { key:"XAG", name:"Silver (oz)", color:"#c0c7d0", live:"goldapi" },
+  { key:"XPT", name:"Platinum (oz)", color:"#4dd0e1", live:"goldapi" }
+];
+const G = { weekends:true, rsiLo:30, rsiHi:70, rsiSpan:20, stretchW:0.35,
+  intro:"Gold is driven by interest-rate expectations, the dollar and fear. Silver and platinum also follow industry, so they swing more than gold.",
+  before:"<b>Before acting:</b> gold and silver react strongly to US interest-rate expectations, the strength of the dollar and fear in the markets. Check the Fed calendar and US inflation or jobs reports. Platinum also follows industrial demand (cars, industry), so it can behave differently from gold. The market is closed on weekends." };
+
+const byKey = k => ASSETS.find(a => a.key === k);
+
+// ---------------- helpers ----------------
+const setStatus = m => document.getElementById('status').textContent = m;
+
+// ---------------- state ----------------
+let rows = [], hourly = {}, live = {};
+let current   = store.get('ap_metals_asset', 'XAU');
+let rangeDays = store.get('ap_metals_range', 7);
+let maType    = store.get('ap_metals_matype', 'SMA');
+let maFast    = store.get('ap_metals_mafast', 20);
+let maSlow    = store.get('ap_metals_maslow', 50);
+let rsiN      = store.get('ap_metals_rsin', 14);
+let bbN       = store.get('ap_metals_bbn', 20);
+let bbK       = store.get('ap_metals_bbk', 2);
+let regK      = store.get('ap_metals_regk', 2);
+let rule      = store.get('ap_metals_rule', 'ma');
+let costPct   = store.get('ap_metals_cost', 0.05);
+let alerts    = store.get('ap_metals_alerts', []);
+
+// ---------------- data ----------------
+async function loadData() {
+  try {
+    const r = await fetch('data/snapshots.json', { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    rows = await r.json();
+  } catch (e) {
+    setStatus('Could not load data/snapshots.json (' + e.message + '). Open this page from your GitHub page link, not as a local file.');
+    return false;
+  }
+  hourly = {};
+  ASSETS.forEach(a => {
+    const out = []; let slot = null;
+    for (const r of rows) {
+      const v = r.v && r.v[a.key];
+      if (v == null) continue;
+      if (G.weekends && isClosed(r.t)) continue;
+      const s = Math.floor(r.t / HOUR);
+      if (s !== slot) { out.push({ t:r.t, p:v }); slot = s; }
+    }
+    hourly[a.key] = out;
+  });
+  return true;
+}
+async function fetchLive() {
+  for (const a of ASSETS.filter(x => x.live)) {
+    try {
+      if (a.live === 'coinbase') {
+        const r = await fetch('https://api.coinbase.com/v2/prices/' + a.key + '-USD/spot', { cache:'no-store' });
+        const j = await r.json(), v = parseFloat(j.data && j.data.amount);
+        if (v > 0) live[a.key] = v;
+      } else {
+        const r = await fetch('https://api.gold-api.com/price/' + a.key, { cache:'no-store' });
+        const j = await r.json();
+        if (typeof j.price === 'number' && j.price > 0) live[a.key] = j.price;
+      }
+    } catch {}
+  }
+}
+function latestSaved(key) {
+  for (let i = rows.length - 1; i >= 0; i--) { const v = rows[i].v && rows[i].v[key]; if (v != null) return v; }
+  return null;
+}
+const latestPrice = key => live[key] ?? latestSaved(key);
+
+function indicators(key) {
+  return computeInd((hourly[key] || []).map(x => x.p), { maType, maFast, maSlow, rsiN, bbN, bbK });
+}
+const latestMA = (key, type, n) => lastOf(avg((hourly[key] || []).map(x => x.p), type, n));
+
+const c1 = makeChart('c1', fmt);
+const c2 = makeChart('c2', v => v.toFixed(1), { min:0, max:100 });
+const c3 = makeChart('c3', sig);
+const c4 = makeChart('c4', fmt);
+const c5 = makeChart('c5', v => v.toFixed(1));
+const c6 = makeChart('c6', fmt);
+initZoom([c2]);
+
+function renderCharts() {
+  const a = byKey(current), h = hourly[current] || [], ind = indicators(current);
+  let idx = h.map((_, i) => i);
+  if (rangeDays > 0) { const from = Date.now() - rangeDays * 86400000; idx = idx.filter(i => h[i].t >= from); }
+  let show = idx;
+  if (show.length > 600) { const step = Math.ceil(show.length / 600); show = show.filter((_, k) => k % step === 0 || k === show.length - 1); }
+  viewH = h; viewShow = show;
+  const key = current + '|' + rangeDays;                 // a new asset or period means a new time axis
+  if (key !== zKey) { zKey = key; zoom = null; }
+  if (zoom) { zoom.a = Math.max(0, Math.min(zoom.a, show.length - 2)); zoom.b = Math.max(zoom.a + 1, Math.min(zoom.b, show.length - 1)); }
+  const zspan = zoom ? h[show[zoom.b]].t - h[show[zoom.a]].t : 0;
+  const lab = zoom ? (t => zspan <= 12 * 3600000 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+      : zspan <= 7 * 86400000 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+      : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year:'2-digit' }))
+    : t => rangeDays === 1 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+    : rangeDays > 0 && rangeDays <= 7 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit' })
+    : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year: rangeDays === 0 || rangeDays > 31 ? '2-digit' : undefined });
+  const labels = show.map(i => lab(h[i].t));
+  const pick = arr => show.map(i => arr[i]);
+  charts.forEach(c => { c.data.labels = labels; });
+
+  // 1 · price + two averages + signals + alert lines
+  const buy = Array(show.length).fill(null), sell = Array(show.length).fill(null);
+  for (let k = 1; k < show.length; k++) {
+    const i0 = show[k-1], i1 = show[k];
+    if (ind.fast[i0] == null || ind.slow[i0] == null || ind.fast[i1] == null || ind.slow[i1] == null) continue;
+    const d0 = ind.fast[i0] - ind.slow[i0], d1 = ind.fast[i1] - ind.slow[i1];
+    if (d0 <= 0 && d1 > 0) buy[k] = h[i1].p; else if (d0 >= 0 && d1 < 0) sell[k] = h[i1].p;
+  }
+  const ds1 = [
+    line(a.name + ' price', pick(ind.p), a.color, { borderWidth:2 }),
+    line('Fast ' + maType + ' ' + maFast + 'h', pick(ind.fast), '#4dd0e1'),
+    line('Slow ' + maType + ' ' + maSlow + 'h', pick(ind.slow), '#ffffff'),
+    { type:'line', label:'Buy signal', data:buy, showLine:false, pointStyle:'triangle', pointRadius:7, borderColor:'#3fb950', backgroundColor:'#3fb950' },
+    { type:'line', label:'Sell signal', data:sell, showLine:false, pointStyle:'triangle', pointRotation:180, pointRadius:7, borderColor:'#f85149', backgroundColor:'#f85149' }
+  ];
+  alerts.filter(x => x.asset === current && !x.done && (x.type === 'above' || x.type === 'below')).forEach(x => {
+    ds1.push({ type:'line', label:'Alert ' + (x.type === 'above' ? '≥ ' : '≤ ') + fmt(x.price), data:show.map(() => x.price),
+               borderColor:'#f0883e', backgroundColor:'#f0883e', borderWidth:1.5, borderDash:[6, 4], pointRadius:0 });
+  });
+  c1.data.datasets = ds1;
+
+  // 2 · RSI
+  c2.data.datasets = [
+    line('RSI ' + rsiN + 'h', pick(ind.rsi), '#b197fc', { borderWidth:2 }),
+    line('Overbought 70', show.map(() => 70), '#f85149', { borderDash:[5, 4], borderWidth:1 }),
+    line('Oversold 30', show.map(() => 30), '#3fb950', { borderDash:[5, 4], borderWidth:1 })
+  ];
+
+  // 3 · MACD
+  c3.data.datasets = [
+    { type:'bar', label:'Histogram', data:pick(ind.hist), maxBarThickness:6,
+      backgroundColor:c => (c.raw ?? 0) >= 0 ? 'rgba(63,185,80,.7)' : 'rgba(248,81,73,.7)' },
+    line('MACD', pick(ind.macd), '#4dd0e1', { borderWidth:2 }),
+    line('Signal', pick(ind.msig), '#f0883e', { borderWidth:2 })
+  ];
+
+  // 4 · Bollinger Bands
+  c4.data.datasets = [
+    line('Lower', pick(ind.bb.lo), 'rgba(77,171,247,.8)', { borderWidth:1 }),
+    line('Upper', pick(ind.bb.up), 'rgba(77,171,247,.8)', { borderWidth:1, fill:'-1', backgroundColor:'rgba(77,171,247,.12)' }),
+    line('Middle ' + bbN + 'h', pick(ind.bb.mid), '#ffffff', { borderWidth:1, borderDash:[5, 4] }),
+    line(a.name + ' price', pick(ind.p), a.color, { borderWidth:2 })
+  ];
+
+  // 5 · linear regression
+  const rg = regress(h, idx), rs = document.getElementById('regstats');
+  if (rg) {
+    const K = regK, up = i => rg.fit(i) + K * rg.sd, lo = i => rg.fit(i) - K * rg.sd;
+    c6.data.datasets = [
+      line('Lower −' + K + 'σ', show.map(lo), 'rgba(240,136,62,.7)', { borderWidth:1 }),
+      line('Upper +' + K + 'σ', show.map(up), 'rgba(240,136,62,.7)', { borderWidth:1, fill:'-1', backgroundColor:'rgba(240,136,62,.10)' }),
+      line('Trend line', show.map(i => rg.fit(i)), '#f0883e', { borderWidth:2, borderDash:[6, 4] }),
+      line(a.name + ' price', pick(ind.p), a.color, { borderWidth:2 })
+    ];
+    const perDay = rg.b * 24, pctDay = rg.mean ? perDay / rg.mean * 100 : 0;
+    const dirw = Math.abs(pctDay) < 0.005 ? 'flat' : perDay > 0 ? 'rising' : 'falling';
+    const fl = rg.fit(rg.lastIdx), z = rg.sd > 0 ? (rg.lastP - fl) / rg.sd : 0;
+    const where = Math.abs(z) <= K ? 'inside the channel' : z > 0 ? 'ABOVE the channel' : 'BELOW the channel';
+    const sgn = v => (v >= 0 ? '+' : '−') + fmt(Math.abs(v));
+    rs.innerHTML = `Trend over this period: <b class="${perDay >= 0 ? 'up' : 'down'}">${dirw}</b> ${sgn(perDay)} USD per day (${(pctDay >= 0 ? '+' : '') + pctDay.toFixed(2)}% per day).<br>` +
+      `Fit quality R² = <b>${rg.r2.toFixed(2)}</b> (1 = a perfectly straight trend, 0 = no straight trend).<br>` +
+      `Latest price is <b>${z >= 0 ? '+' : '−'}${Math.abs(z).toFixed(1)}σ</b> from the line, ${where}.<br>` +
+      `If the trend simply continued, the line would be at <b>${fmt(fl + 24 * rg.b)}</b> in 24 hours (channel ${fmt(fl + 24 * rg.b - K * rg.sd)} to ${fmt(fl + 24 * rg.b + K * rg.sd)}).` +
+      (rg.r2 < 0.3 ? '<br><span class="warn">R² is low: there is no clear straight trend in this period, so the line says little.</span>' : '') +
+      (rg.n < 24 ? '<br><span class="warn">Only ' + rg.n + ' points: try Week, Month or Year.</span>' : '');
+  } else { c6.data.datasets = []; rs.textContent = 'Not enough data in this period.'; }
+
+  // 6 · backtest
+  const stats = document.getElementById('btstats');
+  if (idx.length > 2) {
+    const bt = backtest(ind, idx[0], costPct / 100);
+    c5.data.datasets = [ line('Rule (start = 100)', pick(bt.eq), '#f0883e', { borderWidth:2 }), line('Just holding', pick(bt.bh), '#8b98a5', { borderWidth:1.5 }) ];
+    const pc = v => (v >= 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+    stats.innerHTML = `Closed trades: <b>${bt.closed}</b>${bt.open ? ' (+1 still open)' : ''} · Winning: <b>${bt.closed ? Math.round(bt.wins / bt.closed * 100) + '%' : '–'}</b><br>` +
+      `Rule result: <b class="${bt.ret >= 0 ? 'up' : 'down'}">${pc(bt.ret)}</b> · Just holding: <b class="${bt.hold >= 0 ? 'up' : 'down'}">${pc(bt.hold)}</b> · Worst drop from a peak: <b>${(bt.mdd * 100).toFixed(1)}%</b>` +
+      (bt.closed < 10 ? '<br><span class="warn">Only ' + bt.closed + ' closed trades: too few to trust this result. Load more history (Month / Year / All).</span>' : '');
+  } else { c5.data.datasets = []; stats.textContent = 'Not enough data in this period.'; }
+
+  renderSynth(a, h, ind, idx, rg);
+  applyZoom();
+  charts.forEach(c => c.update());
+  document.querySelectorAll('#ranges button').forEach(b => b.classList.toggle('sel', Number(b.dataset.days) === rangeDays));
+  document.getElementById('hint').textContent = maFast >= maSlow ? 'Tip: the fast average should be shorter than the slow one.' : '';
+  return { h, ind, idx };
+}
+
+// ---------------- header and table ----------------
+function renderHeader(ind) {
+  const h = hourly[current] || [], p = latestPrice(current);
+  document.getElementById('price').textContent = fmt(p) + ' USD';
+  const prev = h.length > 1 ? h[h.length - 2].p : null, chg = document.getElementById('chg');
+  if (p != null && prev) { const d = (p / prev - 1) * 100; chg.textContent = (d >= 0 ? '▲ ' : '▼ ') + Math.abs(d).toFixed(2) + '% vs previous hour'; chg.className = d >= 0 ? 'up' : 'down'; }
+  else chg.textContent = '';
+  const m = lastOf(ind.slow), r = lastOf(ind.rsi), mi = document.getElementById('mainfo');
+  mi.textContent = m == null ? 'Not enough data for the ' + maSlow + '-hour average yet.'
+    : 'Price is ' + (p >= m ? 'ABOVE' : 'BELOW') + ' the slow average' + (r != null ? ' · RSI ' + r.toFixed(0) : '');
+}
+function renderTable(h, ind, idx) {
+  const rowsHtml = idx.slice(-500).reverse().map(i => {
+    const s = ind.slow[i], diff = s == null ? null : (ind.p[i] / s - 1) * 100;
+    return `<tr><td>${stamp(h[i].t)}</td><td>${fmt(ind.p[i])}</td><td>${fmt(ind.fast[i])}</td><td>${fmt(s)}</td>` +
+      `<td class="${diff == null ? '' : diff >= 0 ? 'up' : 'down'}">${diff == null ? '–' : (diff >= 0 ? '+' : '') + diff.toFixed(2) + '%'}</td>` +
+      `<td>${ind.rsi[i] == null ? '–' : ind.rsi[i].toFixed(1)}</td><td>${sig(ind.macd[i])}</td><td>${sig(ind.msig[i])}</td><td>${fmt(ind.bb.up[i])}</td><td>${fmt(ind.bb.lo[i])}</td></tr>`;
+  }).join('');
+  document.getElementById('table').innerHTML =
+    `<tr><th>Time</th><th>Price (USD)</th><th>Fast ${maFast}h</th><th>Slow ${maSlow}h</th><th>vs slow</th><th>RSI</th><th>MACD</th><th>Signal</th><th>Band up</th><th>Band low</th></tr>` + rowsHtml;
+  document.getElementById('ttitle').textContent = byKey(current).name + ' – hourly (' + idx.length + ' rows' + (idx.length > 500 ? ', showing latest 500 – CSV has all' : '') + ')';
+}
+function renderAll() {
+  const { h, ind, idx } = renderCharts();
+  renderHeader(ind); renderTable(h, ind, idx); renderAlerts();
+}
+
+// ---------------- alerts ----------------
+const alertText = x =>
+  x.type === 'cross' ? `crosses its ${x.maType} ${x.maPeriod}h average`
+  : x.type === 'fastslow' ? `fast ${x.maType} ${x.fast}h average crosses slow ${x.slow}h average`
+  : (x.type === 'above' ? 'rises to or above ' : 'falls to or below ') + fmt(x.price);
+
+function renderAlerts() {
+  const box = document.getElementById('alerts');
+  if (!alerts.length) { box.innerHTML = '<div class="item done">No alerts yet.</div>'; return; }
+  box.innerHTML = alerts.map(x => `
+    <div class="item ${x.done ? 'done' : ''}">
+      <span>${byKey(x.asset).name}: ${alertText(x)} ${x.done ? '— TRIGGERED ' + stamp(x.firedAt) + ' at ' + fmt(x.firedPrice) : ''}</span>
+      <span>${x.done ? `<button class="alt" data-rearm="${x.id}">Re-arm</button> ` : ''}<button class="alt" data-del="${x.id}">Delete</button></span>
+    </div>`).join('');
+}
+document.getElementById('alerts').addEventListener('click', e => {
+  const del = e.target.dataset.del, re = e.target.dataset.rearm;
+  if (del) alerts = alerts.filter(x => String(x.id) !== del);
+  if (re) alerts.forEach(x => { if (String(x.id) === re) { x.done = false; x.side = null; } });
+  store.set('ap_metals_alerts', alerts); renderAlerts(); renderCharts();
+});
+document.getElementById('aadd').onclick = () => {
+  const type = document.getElementById('atype').value;
+  const price = parseFloat(document.getElementById('aprice').value);
+  if ((type === 'above' || type === 'below') && !(price > 0)) { alert('Enter a price in USD.'); return; }
+  const p = latestPrice(current), key = current;
+  const x = { id:Date.now(), asset:key, type, price:null, maType, maPeriod:maSlow, fast:maFast, slow:maSlow, side:null, done:false };
+  if (type === 'above' || type === 'below') x.price = price;
+  else if (type === 'cross') { const m = latestMA(key, maType, maSlow); if (m == null) { alert('Not enough hourly data yet for this average.'); return; } x.side = Math.sign(p - m); }
+  else { const f = latestMA(key, maType, maFast), s = latestMA(key, maType, maSlow); if (f == null || s == null) { alert('Not enough hourly data yet for these averages.'); return; } x.side = Math.sign(f - s); }
+  alerts.push(x); store.set('ap_metals_alerts', alerts); renderAlerts(); renderCharts();
+};
+document.getElementById('atype').onchange = e => { document.getElementById('aprice').style.display = (e.target.value === 'above' || e.target.value === 'below') ? '' : 'none'; };
+document.getElementById('anotif').onclick = async () => {
+  if (!('Notification' in window)) { alert('Notifications are not supported in this browser. In-page alerts still work.'); return; }
+  const r = await Notification.requestPermission();
+  alert(r === 'granted' ? 'Notifications enabled (they only work while the page is open).' : 'Notifications not allowed. In-page alerts still work.');
+};
+function beep() {
+  try { const c = new (window.AudioContext || window.webkitAudioContext)(), o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination); o.frequency.value = 880; g.gain.value = 0.2; o.start(); o.stop(c.currentTime + 0.4); } catch {}
+}
+function notify(x, p) {
+  const text = byKey(x.asset).name + ' ' + alertText(x) + ' — now ' + fmt(p) + ' USD';
+  const div = document.createElement('div'); div.className = 'alertmsg';
+  div.innerHTML = '<span>🔔 ' + text + '</span><button class="alt">OK</button>';
+  div.querySelector('button').onclick = () => div.remove();
+  document.getElementById('banner').appendChild(div);
+  beep(); try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch {}
+  try { if ('Notification' in window && Notification.permission === 'granted') new Notification('Price alert', { body:text }); } catch {}
+}
+function checkAlerts() {
+  let changed = false;
+  alerts.forEach(x => {
+    if (x.done) return;
+    const p = latestPrice(x.asset); if (p == null) return;
+    let hit = false;
+    if (x.type === 'above') hit = p >= x.price;
+    else if (x.type === 'below') hit = p <= x.price;
+    else {
+      let diff = null;
+      if (x.type === 'cross') { const m = latestMA(x.asset, x.maType, x.maPeriod); if (m != null) diff = p - m; }
+      else { const f = latestMA(x.asset, x.maType, x.fast), s = latestMA(x.asset, x.maType, x.slow); if (f != null && s != null) diff = f - s; }
+      if (diff != null) {
+        const side = Math.sign(diff);
+        if (x.side == null) { x.side = side; changed = true; }
+        else if (side !== 0 && side !== x.side) hit = true;
+      }
+    }
+    if (hit) { x.done = true; x.firedAt = Date.now(); x.firedPrice = p; changed = true; notify(x, p); }
+  });
+  if (changed) { store.set('ap_metals_alerts', alerts); renderAlerts(); renderCharts(); }
+}
+
+// ---------------- controls ----------------
+function buildAssetChips() {
+  const box = document.getElementById('assets');
+  box.innerHTML = ASSETS.map(a => `<button class="chip alt" data-key="${a.key}" style="color:${a.color}">${a.name}</button>`).join('');
+  box.onclick = e => { const k = e.target.dataset.key; if (k) { current = k; store.set('ap_metals_asset', k); markChips(); renderAll(); } };
+  markChips();
+}
+function markChips() { document.querySelectorAll('#assets .chip').forEach(b => b.classList.toggle('sel', b.dataset.key === current)); }
+document.querySelectorAll('#ranges button').forEach(b => b.onclick = () => { rangeDays = Number(b.dataset.days); store.set('ap_metals_range', rangeDays); renderAll(); });
+function bindSelect(id, get, set, key, num) {
+  const el = document.getElementById(id); el.value = String(get());
+  el.onchange = () => { const v = num ? Number(el.value) : el.value; set(v); store.set(key, v); renderAll(); };
+}
+bindSelect('matype', () => maType, v => maType = v, 'ap_metals_matype', false);
+bindSelect('mafast', () => maFast, v => maFast = v, 'ap_metals_mafast', true);
+bindSelect('maslow', () => maSlow, v => maSlow = v, 'ap_metals_maslow', true);
+bindSelect('rsin',   () => rsiN,   v => rsiN = v,   'ap_metals_rsin', true);
+bindSelect('bbn',    () => bbN,    v => bbN = v,    'ap_metals_bbn', true);
+bindSelect('bbk',    () => bbK,    v => bbK = v,    'ap_metals_bbk', true);
+bindSelect('regk',   () => regK,   v => regK = v,   'ap_metals_regk', true);
+bindSelect('rule',   () => rule,   v => rule = v,   'ap_metals_rule', false);
+const costEl = document.getElementById('cost'); costEl.value = costPct;
+costEl.onchange = () => { costPct = Math.max(0, parseFloat(costEl.value) || 0); store.set('ap_metals_cost', costPct); renderAll(); };
+
+document.getElementById('csv').onclick = async () => {
+  const h = hourly[current] || [], ind = indicators(current);
+  if (!h.length) { alert('No rows yet.'); return; }
+  const n = v => v ?? '';
+  const lines = ['Time,Price (USD),Fast ' + maType + ' ' + maFast + 'h,Slow ' + maType + ' ' + maSlow + 'h,RSI,MACD,MACD signal,Band middle,Band upper,Band lower']
+    .concat(h.map((x, i) => [stamp(x.t), x.p, n(ind.fast[i]), n(ind.slow[i]), n(ind.rsi[i]), n(ind.macd[i]), n(ind.msig[i]), n(ind.bb.mid[i]), n(ind.bb.up[i]), n(ind.bb.lo[i])].join(',')));
+  const blob = new Blob(['﻿' + lines.join('\n')], { type:'text/csv' });
+  const name = byKey(current).key + '_hourly_' + stamp(Date.now()).slice(0, 10) + '.csv';
+  await saveBlob(blob, name);
+};
+
+// ---------------- start ----------------
+async function refresh() {
+  if (await loadData()) {
+    await fetchLive();
+    showStale(rows, ASSETS.map(x => x.key));
+    let src = '';
+    try { const st = await (await fetch('data/status.json', { cache:'no-store' })).json(); const u = [...new Set(ASSETS.map(x => st.source && st.source[x.key]).filter(Boolean))]; if (u.length) src = ' · price source: ' + u.join(', '); if (st.warnings && st.warnings.length) src += ' · ⚠ ' + st.warnings.join('; '); } catch {}
+    setStatus('Last saved row: ' + (rows.length ? stamp(rows[rows.length - 1].t) : '–') + ' · checked ' + new Date().toLocaleTimeString() + src);
+    renderAll(); checkAlerts();
+  }
+}
+document.getElementById('synintro').textContent = G.intro;
+initRisk('riskcard');
+buildAssetChips(); renderAlerts();
+document.getElementById('atype').onchange({ target:document.getElementById('atype') });
+refresh();
+setInterval(async () => { await fetchLive(); const ind = indicators(current); renderHeader(ind); checkAlerts(); }, 60 * 1000);
+setInterval(refresh, 5 * 60 * 1000);
+</script>
+</body>
+</html>
