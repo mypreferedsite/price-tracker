@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live Prices (USD)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"><\/script>')</script>
+<script>window.Chart || document.write('<script src="lib/chart.umd.min.js"><\/script>')</script>
 <style>
   :root { --bg:#0f1419; --card:#1a2129; --text:#e6edf3; --muted:#8b98a5; --line:#2b3540; }
   * { box-sizing: border-box; }
@@ -34,27 +36,15 @@
   .cbox { position:relative; height:30vh; min-height:220px; }
   .stats { font-size:.85rem; margin-top:6px; line-height:1.5; }
   .warn { color:#f0883e; } .up { color:#3fb950; } .down { color:#f85149; }
-  footer {
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.75rem;
-  line-height: 1.7;
-  padding: 16px 8px;
-  margin-top: 15px;
-  border-top: 1px solid var(--line);
-}
-
-footer span {
-  display: block;
-}
 </style>
 </head>
 <body>
+<div id="stale"></div>
 <h1>Live prices in USD</h1>
 <div class="status" id="status">Starting…</div>
- 
+
 <div class="live" id="live"></div>
- 
+
 <div class="card">
   <div class="controls">
     <label>View
@@ -74,10 +64,19 @@ footer span {
     </span>
   </div>
   <div class="controls" id="curves"></div>
-  <div class="chartbox"><canvas id="chart"></canvas></div>
-  <div class="status" style="margin:6px 0 0">Gold/silver are ~thousands/tens of USD while currencies are near 1 USD, so log scale keeps all lines visible.</div>
+  <div class="controls" id="zoombar">
+    <button class="alt" id="zsel">🔍 Select area: off</button>
+    <button class="alt" id="zin">＋</button>
+    <button class="alt" id="zout">－</button>
+    <button class="alt" id="zleft">◀</button>
+    <button class="alt" id="zright">▶</button>
+    <button class="alt" id="zreset">Reset zoom</button>
+  </div>
+  <div class="status" id="zinfo" style="margin:0 0 6px">To zoom: drag across the chart with the mouse, or switch “Select area” on and drag with your finger. Then use ◀ ▶ to move.</div>
+  <div class="chartbox"><canvas id="chart"></canvas><div id="zbox" style="display:none;position:absolute;top:0;bottom:0;background:rgba(77,208,225,.18);border:1px solid #4dd0e1;pointer-events:none"></div></div>
+  <div class="status" style="margin:6px 0 0">Bitcoin and gold are thousands of USD while currencies are near 1 USD, so log scale (USD view) keeps all lines visible. In % change view, Bitcoin and Ethereum can dominate: hide them with the curve buttons.</div>
 </div>
- 
+
 <div class="card" id="indcard">
   <div class="controls">
     <label>Indicator
@@ -114,11 +113,20 @@ footer span {
   <div id="indbody" style="display:none">
     <strong id="indtitle"></strong>
     <div class="status" id="indinfo" style="margin-bottom:4px"></div>
-    <div class="cbox"><canvas id="ichart"></canvas></div>
+    <div class="controls">
+      <button class="alt" id="izsel">🔍 Select area: off</button>
+      <button class="alt" id="izin">＋</button>
+      <button class="alt" id="izout">－</button>
+      <button class="alt" id="izleft">◀</button>
+      <button class="alt" id="izright">▶</button>
+      <button class="alt" id="izreset">Reset zoom</button>
+    </div>
+    <div class="status" id="izinfo" style="margin:0 0 6px"></div>
+    <div class="cbox"><canvas id="ichart"></canvas><div id="izbox" style="display:none;position:absolute;top:0;bottom:0;background:rgba(77,208,225,.18);border:1px solid #4dd0e1;pointer-events:none"></div></div>
     <div class="stats" id="indstats"></div>
   </div>
 </div>
- 
+
 <div class="card">
   <div class="controls">
     <strong>Snapshots every 30 minutes</strong>
@@ -127,23 +135,26 @@ footer span {
   </div>
   <div class="tablewrap"><table id="table"></table></div>
 </div>
- 
+
 <script>
 // ---------------- configuration ----------------
 const ASSETS = [
   { key:'XAU', name:'Gold (oz)',   color:'#f5c518', type:'metal' },
   { key:'XAG', name:'Silver (oz)', color:'#c0c7d0', type:'metal' },
+  { key:'XPT', name:'Platinum (oz)', color:'#4dd0e1', type:'metal' },
   { key:'CHF', name:'CHF',         color:'#ff6b6b', type:'fx' },
   { key:'EUR', name:'EUR',         color:'#4dabf7', type:'fx' },
   { key:'JPY', name:'JPY',         color:'#51cf66', type:'fx' },
   { key:'GBP', name:'GBP',         color:'#b197fc', type:'fx' },
+  { key:'BTC', name:'Bitcoin',     color:'#f7931a', type:'crypto' },
+  { key:'ETH', name:'Ethereum',    color:'#8c9eff', type:'crypto' },
 ];
 const CHART_EVERY_MS    = 30 * 1000;        // chart refresh
 const FX_EVERY_MS       = 5 * 60 * 1000;    // currency refresh (source updates slowly)
 const SNAPSHOT_EVERY_MS = 30 * 60 * 1000;   // table row
 const MAX_POINTS        = 3000;
 const LS = { hist:'lp_history', snaps:'lp_snaps' };
- 
+
 // ---------------- storage ----------------
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; } };
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -158,8 +169,26 @@ async function loadServer() {
     const r = await fetch('data/snapshots.json', { cache:'no-store' });
     if (!r.ok) return;
     const j = await r.json();
-    if (Array.isArray(j) && j.length) { snaps = j; serverMode = true; }
+    if (Array.isArray(j) && j.length) {
+      snaps = j; serverMode = true; showStale(j);
+      ASSETS.forEach(a => {                       // show the latest saved price until a live price arrives (or when none exists, e.g. platinum)
+        if (last[a.key] != null) return;
+        for (let i = j.length - 1; i >= 0; i--) { const v = j[i].v && j[i].v[a.key]; if (v != null) { last[a.key] = v; break; } }
+      });
+    }
   } catch {}
+}
+function showStale(rows) {
+  const box = document.getElementById('stale'); if (!box) return;
+  const now = Date.now(), msg = []; let worst = 0;
+  ASSETS.forEach(a => {
+    let t = null;
+    for (let i = rows.length - 1; i >= 0; i--) { if (rows[i].v && rows[i].v[a.key] != null) { t = rows[i].t; break; } }
+    const closed = a.type !== 'crypto' && isClosed(now), age = t == null ? Infinity : (now - t) / 3600000;
+    if (age > (closed ? 72 : 2)) { worst = Math.max(worst, age > (closed ? 96 : 6) ? 2 : 1); msg.push(a.name + (t == null ? ': no saved price yet' : ': ' + (age < 48 ? age.toFixed(1) + ' hours' : Math.round(age / 24) + ' days') + ' old')); }
+  });
+  if (!msg.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div style="background:${worst === 2 ? '#7a1f1a' : '#7a4a0e'};border:1px solid ${worst === 2 ? '#f85149' : '#f0883e'};border-radius:8px;padding:9px 11px;margin-bottom:10px;font-size:.85rem"><b>⚠ Saved prices are old.</b> ${msg.join(' · ')}. The collector may have stopped: on GitHub open Actions, then “Collect prices”. <a href="health.html" style="color:#fff">Data health page</a></div>`;
 }
 // Chart shows one point per 30 minutes. Server snapshots are already 30 min apart;
 // otherwise keep the first point of each 30-minute slot from the locally recorded history.
@@ -174,7 +203,7 @@ const every30 = (pts) => {
 };
 const allPoints = () => serverMode ? snaps : every30(history);
 history.slice(-1).forEach(p => Object.assign(last, p.v));
- 
+
 // ---------------- data fetching ----------------
 async function getJSON(url) {
   const r = await fetch(url, { cache:'no-store' });
@@ -184,8 +213,21 @@ async function getJSON(url) {
 async function fetchMetals() {
   const out = {};
   await Promise.all(ASSETS.filter(a => a.type === 'metal').map(async a => {
-    const j = await getJSON('https://api.gold-api.com/price/' + a.key);
-    if (typeof j.price === 'number') out[a.key] = j.price;
+    try {                                   // one metal failing (for example platinum) must not stop the others
+      const j = await getJSON('https://api.gold-api.com/price/' + a.key);
+      if (typeof j.price === 'number' && j.price > 0) out[a.key] = j.price;
+    } catch {}
+  }));
+  return out;
+}
+async function fetchCrypto() {
+  const out = {};
+  await Promise.all(ASSETS.filter(a => a.type === 'crypto').map(async a => {
+    try {
+      const j = await getJSON('https://api.coinbase.com/v2/prices/' + a.key + '-USD/spot');
+      const v = parseFloat(j.data && j.data.amount);
+      if (v > 0) out[a.key] = v;
+    } catch {}
   }));
   return out;
 }
@@ -197,7 +239,7 @@ async function fetchFx() {
   });
   return out;
 }
- 
+
 // ---------------- chart ----------------
 const ctx = document.getElementById('chart').getContext('2d');
 const chart = new Chart(ctx, {
@@ -211,7 +253,7 @@ const chart = new Chart(ctx, {
     scales:{
       x:{ title:{ display:true, text:'Time', color:'#8b98a5' }, ticks:{ color:'#8b98a5', maxTicksLimit:8 }, grid:{ color:'#2b3540' } },
       y:{ type:'logarithmic', title:{ display:true, text:'Price (USD)', color:'#8b98a5' },
-          ticks:{ color:'#8b98a5', callback:v => Number(v).toLocaleString() }, grid:{ color:'#2b3540' } }
+          ticks:{ color:'#8b98a5', callback:v => usdTick(v) }, grid:{ color:'#2b3540' } }
     },
     plugins:{
       legend:{ onClick:() => {}, labels:{ color:'#e6edf3' } },
@@ -227,10 +269,73 @@ const chart = new Chart(ctx, {
 });
 document.getElementById('log').addEventListener('change', () => renderChart());
 document.getElementById('mode').addEventListener('change', () => renderChart());
- 
+
+function usdTick(v) {            // enough decimals for tiny prices such as JPY (0.0066)
+  v = Number(v); const a = Math.abs(v);
+  return v.toLocaleString(undefined, { maximumFractionDigits: a >= 100 ? 2 : a >= 1 ? 4 : 6 });
+}
 const fmtTime = t => new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
 const fmtVal  = (k, v) => v == null ? '–' : (v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(6));
- 
+
+// ---------------- zoom (main chart) ----------------
+let zoom = null, curPts = [], selMode = false;   // zoom = {a, b} = first/last point index shown
+function applyZoom() {
+  const x = chart.options.scales.x, y = chart.options.scales.y;
+  if (!zoom) { x.min = x.max = y.min = y.max = undefined; }
+  else {
+    x.min = zoom.a; x.max = zoom.b;
+    let lo = Infinity, hi = -Infinity;
+    chart.data.datasets.forEach(d => { if (d.hidden) return; for (let i = zoom.a; i <= zoom.b; i++) { const v = d.data[i]; if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } } });
+    if (lo === Infinity) { y.min = y.max = undefined; }
+    else if (y.type === 'logarithmic' && lo > 0) { const f = Math.max(Math.pow(hi / lo, 0.05), 1.0005); y.min = lo / f; y.max = hi * f; }
+    else { const m = (hi - lo) * 0.08 || Math.abs(hi) * 0.001 || 0.5; y.min = lo - m; y.max = hi + m; }
+  }
+  const info = document.getElementById('zinfo');
+  if (zoom && curPts.length) info.textContent = 'Zoomed: ' + fmtTime(curPts[zoom.a].t) + '  →  ' + fmtTime(curPts[zoom.b].t) + '  (' + (zoom.b - zoom.a + 1) + ' points). Use ◀ ▶ to move, − to zoom out, Reset to go back.';
+  else info.textContent = 'To zoom: drag across the chart with the mouse, or switch “Select area” on and drag with your finger. Then use ◀ ▶ to move.';
+}
+function setZoom(a, b) {
+  const n = curPts.length; if (n < 2) return;
+  if (b - a < 4) { const c = (a + b) / 2; a = Math.round(c - 2); b = a + 4; }          // keep at least 5 points
+  if (a < 0) { b -= a; a = 0; } if (b > n - 1) { a -= b - (n - 1); b = n - 1; } a = Math.max(0, a);
+  zoom = (a <= 0 && b >= n - 1) ? null : { a, b };
+  renderChart();
+}
+(function () {
+  const cv = document.getElementById('chart'), box = document.getElementById('zbox');
+  let x0 = null, xs = null;
+  const px = e => e.clientX - cv.getBoundingClientRect().left;
+  cv.style.touchAction = 'pan-y';
+  cv.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' && !selMode) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    x0 = px(e); xs = x0; try { cv.setPointerCapture(e.pointerId); } catch {}
+  });
+  cv.addEventListener('pointermove', e => {
+    if (x0 === null) return; xs = px(e);
+    box.style.display = 'block'; box.style.left = Math.min(x0, xs) + 'px'; box.style.width = Math.abs(xs - x0) + 'px';
+  });
+  const end = e => {
+    if (x0 === null) return;
+    const a = x0, b = xs; x0 = null; box.style.display = 'none';
+    if (Math.abs(b - a) < 12) return;
+    const sc = chart.scales.x, i0 = Math.round(sc.getValueForPixel(Math.min(a, b))), i1 = Math.round(sc.getValueForPixel(Math.max(a, b)));
+    setZoom(Math.max(0, i0), Math.min(curPts.length - 1, i1));
+  };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', () => { x0 = null; box.style.display = 'none'; });
+  const cur = () => zoom || { a:0, b:curPts.length - 1 };
+  document.getElementById('zsel').onclick = e => {
+    selMode = !selMode; cv.style.touchAction = selMode ? 'none' : 'pan-y';
+    e.target.textContent = '🔍 Select area: ' + (selMode ? 'ON – drag on the chart' : 'off'); e.target.classList.toggle('sel', selMode);
+  };
+  document.getElementById('zin').onclick = () => { const z = cur(), c = (z.a + z.b) / 2, w = (z.b - z.a) / 4; setZoom(Math.round(c - w), Math.round(c + w)); };
+  document.getElementById('zout').onclick = () => { const z = cur(), c = (z.a + z.b) / 2, w = z.b - z.a; setZoom(Math.round(c - w), Math.round(c + w)); };
+  document.getElementById('zleft').onclick = () => { if (!zoom) return; const d = Math.max(1, Math.round((zoom.b - zoom.a) / 4)); setZoom(zoom.a - d, zoom.b - d); };
+  document.getElementById('zright').onclick = () => { if (!zoom) return; const d = Math.max(1, Math.round((zoom.b - zoom.a) / 4)); setZoom(zoom.a + d, zoom.b + d); };
+  document.getElementById('zreset').onclick = () => { zoom = null; renderChart(); };
+})();
+
 let rangeDays = 7;   // default view: one week
 try { rangeDays = Number(localStorage.getItem('lp_range') ?? 7); } catch {}
 function renderChart() {
@@ -244,8 +349,14 @@ function renderChart() {
     const step = Math.ceil(pts.length / 500);
     pts = pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
   }
+  curPts = pts;
+  if (zoom) { zoom.a = Math.max(0, Math.min(zoom.a, pts.length - 2)); zoom.b = Math.max(zoom.a + 1, Math.min(zoom.b, pts.length - 1)); }
+  const zspan = zoom ? pts[zoom.b].t - pts[zoom.a].t : 0;
   const longRange = rangeDays === 0 || rangeDays > 2;
-  const lab = t => longRange
+  const lab = zoom ? (t => zspan <= 12 * 3600000 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+      : zspan <= 7 * 86400000 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+      : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year:'2-digit' }))
+    : t => longRange
     ? new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year: rangeDays === 365 || rangeDays === 0 ? '2-digit' : undefined })
     : new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   chart.data.labels = pts.map(p => lab(p.t) + (longRange ? '' : ''));
@@ -259,8 +370,9 @@ function renderChart() {
   });
   chart.options.scales.y.type = pct ? 'linear' : (document.getElementById('log').checked ? 'logarithmic' : 'linear');
   chart.options.scales.y.title.text = pct ? 'Change since start of range (%)' : 'Price (USD)';
-  chart.options.scales.y.ticks.callback = v => pct ? Number(v).toFixed(2) + '%' : Number(v).toLocaleString();
+  chart.options.scales.y.ticks.callback = v => pct ? Number(v).toFixed(2) + '%' : usdTick(v);
   chart.options.plugins.tooltip.callbacks.label = c => ' ' + c.dataset.label + ': ' + (pct ? c.parsed.y.toFixed(3) + '%' : fmtVal(null, c.parsed.y));
+  applyZoom();
   chart.update();
   document.querySelectorAll('#ranges button').forEach(b => b.classList.toggle('sel', Number(b.dataset.days) === rangeDays));
   markCurveChips();
@@ -269,6 +381,7 @@ function renderChart() {
 document.querySelectorAll('#ranges button').forEach(b => b.onclick = () => {
   rangeDays = Number(b.dataset.days);
   try { localStorage.setItem('lp_range', rangeDays); } catch {}
+  zoom = null;
   renderChart();
 });
 function renderLive() {
@@ -281,13 +394,14 @@ function renderTable() {
     `<tr><td>${fmtTime(s.t)}</td>` + ASSETS.map(a => `<td>${fmtVal(a.key, s.v[a.key])}</td>`).join('') + '</tr>').join('');
   document.getElementById('table').innerHTML = head + rows;
 }
- 
+
 // ---------------- main loop ----------------
 const setStatus = (m) => document.getElementById('status').textContent = m;
- 
+
 async function tick() {
   const errs = [];
   try { Object.assign(last, await fetchMetals()); } catch (e) { errs.push('metals: ' + e.message); }
+  try { Object.assign(last, await fetchCrypto()); } catch (e) { errs.push('crypto: ' + e.message); }
   if (Date.now() - lastFx >= FX_EVERY_MS) {
     try { Object.assign(last, await fetchFx()); lastFx = Date.now(); } catch (e) { errs.push('currencies: ' + e.message); }
   }
@@ -307,8 +421,8 @@ async function tick() {
   setStatus((errs.length ? 'Error – ' + errs.join(' | ') + '. ' : '') +
             'Last update: ' + new Date().toLocaleTimeString() + ' · refresh every 30 s');
 }
- 
- 
+
+
 // ================= 1) show / hide curves =================
 const pref = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
@@ -327,7 +441,7 @@ function buildCurveChips() {
   };
 }
 function markCurveChips() { document.querySelectorAll('#curves .cchip').forEach(b => b.classList.toggle('on', !hiddenKeys.includes(b.dataset.key))); }
- 
+
 // ================= 2) one indicator chart =================
 const P = { ind:pref('lp_ind', 'none'), asset:pref('lp_indasset', 'XAU'), type:pref('lp_matype', 'SMA'), fast:pref('lp_mafast', 20), slow:pref('lp_maslow', 50),
             rsi:pref('lp_rsin', 14), bbn:pref('lp_bbn', 20), bbk:pref('lp_bbk', 2), regk:pref('lp_regk', 2), rule:pref('lp_rule', 'ma'), cost:pref('lp_cost', 0.05) };
@@ -339,10 +453,14 @@ const INFO = {
   reg: ['Linear regression (trend line)', 'A straight line fitted to the price over the selected period, with a channel around it. Above the channel = well above its trend; below = well below. It describes the past, not the future.'],
   bt:  ['Backtest on your saved history', 'Starts at 100. Long only. Orange = the rule, grey = just holding. It shows what would have happened, not what will happen.']
 };
+// metals and currencies do not trade from Friday ~22:00 UTC to Sunday ~22:00 UTC
+const isClosed = t => { const d = new Date(t), wd = d.getUTCDay(), h = d.getUTCHours(); return wd === 6 || (wd === 5 && h >= 22) || (wd === 0 && h < 22); };
 function hourlySeries(key) {
   const out = []; let slot = null;
+  const skipClosed = (ASSETS.find(a => a.key === key) || {}).type !== 'crypto';
   for (const r of allPoints()) {
     const v = r.v[key]; if (v == null) continue;
+    if (skipClosed && isClosed(r.t)) continue;
     const s = Math.floor(r.t / 3600000);
     if (s !== slot) { out.push({ t:r.t, p:v }); slot = s; }
   }
@@ -424,6 +542,66 @@ function showGroups() {
   const g = (c, v) => document.querySelectorAll(c).forEach(e => e.style.display = v ? '' : 'none'), s = P.ind;
   g('.g-ma', s === 'ma' || s === 'bt'); g('.g-rsi', s === 'rsi' || s === 'bt'); g('.g-bb', s === 'bb' || s === 'bt'); g('.g-reg', s === 'reg'); g('.g-bt', s === 'bt');
 }
+// ---------------- zoom (indicator chart) ----------------
+let izoom = null, iKey = '', iSelMode = false;
+const IZ_HELP = 'To zoom: drag across the chart with the mouse, or switch “Select area” on and drag with your finger. Then use ◀ ▶ to move.';
+function applyIZoom(ds) {
+  const x = ichart.options.scales.x, y = ichart.options.scales.y, n = iView.show.length;
+  if (izoom) { izoom.a = Math.max(0, Math.min(izoom.a, n - 2)); izoom.b = Math.max(izoom.a + 1, Math.min(izoom.b, n - 1)); }
+  if (!izoom) { x.min = x.max = undefined; }
+  else {
+    x.min = izoom.a; x.max = izoom.b;
+    if (P.ind !== 'rsi') {                                   // RSI keeps its fixed 0-100 scale
+      let lo = Infinity, hi = -Infinity;
+      ds.forEach(d => { for (let i = izoom.a; i <= izoom.b; i++) { const v = d.data[i]; if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } } });
+      if (lo !== Infinity) { const m = (hi - lo) * 0.08 || Math.abs(hi) * 0.001 || 0.5; y.min = lo - m; y.max = hi + m; }
+    }
+  }
+  const info = document.getElementById('izinfo');
+  if (izoom && iView.h[iView.show[izoom.a]]) info.textContent = 'Zoomed: ' + fmtTime(iView.h[iView.show[izoom.a]].t) + '  →  ' + fmtTime(iView.h[iView.show[izoom.b]].t) + '  (' + (izoom.b - izoom.a + 1) + ' points). Use ◀ ▶ to move, − to zoom out, Reset to go back.';
+  else info.textContent = IZ_HELP;
+}
+function setIZoom(a, b) {
+  const n = iView.show.length; if (n < 2) return;
+  if (b - a < 4) { const c = (a + b) / 2; a = Math.round(c - 2); b = a + 4; }
+  if (a < 0) { b -= a; a = 0; } if (b > n - 1) { a -= b - (n - 1); b = n - 1; } a = Math.max(0, a);
+  izoom = (a <= 0 && b >= n - 1) ? null : { a, b };
+  renderIndicator();
+}
+(function () {
+  const cv = document.getElementById('ichart'), box = document.getElementById('izbox');
+  let x0 = null, xs = null;
+  const px = e => e.clientX - cv.getBoundingClientRect().left;
+  cv.style.touchAction = 'pan-y';
+  cv.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' && !iSelMode) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    x0 = px(e); xs = x0; try { cv.setPointerCapture(e.pointerId); } catch {}
+  });
+  cv.addEventListener('pointermove', e => {
+    if (x0 === null) return; xs = px(e);
+    box.style.display = 'block'; box.style.left = Math.min(x0, xs) + 'px'; box.style.width = Math.abs(xs - x0) + 'px';
+  });
+  cv.addEventListener('pointerup', () => {
+    if (x0 === null) return;
+    const a = x0, b = xs; x0 = null; box.style.display = 'none';
+    if (Math.abs(b - a) < 12) return;
+    const sc = ichart.scales.x, i0 = Math.round(sc.getValueForPixel(Math.min(a, b))), i1 = Math.round(sc.getValueForPixel(Math.max(a, b)));
+    setIZoom(Math.max(0, i0), Math.min(iView.show.length - 1, i1));
+  });
+  cv.addEventListener('pointercancel', () => { x0 = null; box.style.display = 'none'; });
+  const cur = () => izoom || { a:0, b:iView.show.length - 1 };
+  document.getElementById('izsel').onclick = e => {
+    iSelMode = !iSelMode; cv.style.touchAction = iSelMode ? 'none' : 'pan-y';
+    e.target.textContent = '🔍 Select area: ' + (iSelMode ? 'ON – drag on the chart' : 'off'); e.target.classList.toggle('sel', iSelMode);
+  };
+  document.getElementById('izin').onclick = () => { const z = cur(), c = (z.a + z.b) / 2, w = (z.b - z.a) / 4; setIZoom(Math.round(c - w), Math.round(c + w)); };
+  document.getElementById('izout').onclick = () => { const z = cur(), c = (z.a + z.b) / 2, w = z.b - z.a; setIZoom(Math.round(c - w), Math.round(c + w)); };
+  document.getElementById('izleft').onclick = () => { if (!izoom) return; const d = Math.max(1, Math.round((izoom.b - izoom.a) / 4)); setIZoom(izoom.a - d, izoom.b - d); };
+  document.getElementById('izright').onclick = () => { if (!izoom) return; const d = Math.max(1, Math.round((izoom.b - izoom.a) / 4)); setIZoom(izoom.a + d, izoom.b + d); };
+  document.getElementById('izreset').onclick = () => { izoom = null; renderIndicator(); };
+})();
+
 function renderIndicator() {
   showGroups();
   const body = document.getElementById('indbody');
@@ -435,7 +613,14 @@ function renderIndicator() {
   let show = idx;
   if (show.length > 600) { const step = Math.ceil(show.length / 600); show = show.filter((_, k) => k % step === 0 || k === show.length - 1); }
   iView = { h, show };
-  const lab = t => rangeDays === 1 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+  const key = P.asset + '|' + rangeDays;                       // a new asset or period means a new time axis
+  if (key !== iKey) { iKey = key; izoom = null; }
+  if (izoom) { izoom.a = Math.max(0, Math.min(izoom.a, show.length - 2)); izoom.b = Math.max(izoom.a + 1, Math.min(izoom.b, show.length - 1)); }
+  const zspan = izoom ? h[show[izoom.b]].t - h[show[izoom.a]].t : 0;
+  const lab = izoom ? (t => zspan <= 12 * 3600000 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
+      : zspan <= 7 * 86400000 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+      : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year:'2-digit' }))
+    : t => rangeDays === 1 ? new Date(t).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })
     : rangeDays > 0 && rangeDays <= 7 ? new Date(t).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit' })
     : new Date(t).toLocaleDateString([], { month:'short', day:'numeric', year: rangeDays === 0 || rangeDays > 31 ? '2-digit' : undefined });
   ichart.data.labels = show.map(i => lab(h[i].t));
@@ -494,7 +679,7 @@ function renderIndicator() {
   y.ticks.callback = v => yf(Number(v));
   o.plugins.tooltip.callbacks.label = c => ' ' + c.dataset.label + ': ' + yf(c.parsed.y);
   o.plugins.tooltip.callbacks.title = it => it.length && iView.h[iView.show[it[0].dataIndex]] ? fmtTime(iView.h[iView.show[it[0].dataIndex]].t) : '';
-  ichart.data.datasets = ds; ichart.update();
+  ichart.data.datasets = ds; applyIZoom(ds); ichart.update();
   document.getElementById('indtitle').textContent = a.name + ' – ' + INFO[P.ind][0] + ' (hourly)';
   document.getElementById('indinfo').textContent = INFO[P.ind][1];
   document.getElementById('indstats').innerHTML = stats;
@@ -513,12 +698,12 @@ function initIndicatorControls() {
   c.onchange = () => { P.cost = Math.max(0, parseFloat(c.value) || 0); setPref('lp_cost', P.cost); renderIndicator(); };
 }
 buildCurveChips(); initIndicatorControls();
- 
+
 // ---------------- buttons ----------------
 const pad = n => String(n).padStart(2, '0');
 const localStamp = t => { const d = new Date(t);
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
- 
+
 document.getElementById('csv').onclick = async () => {
   if (!snaps.length) { alert('No rows in the table yet.'); return; }
   // ALL accumulated rows, oldest first
@@ -526,7 +711,7 @@ document.getElementById('csv').onclick = async () => {
     .concat(snaps.map(s => [localStamp(s.t), ...ASSETS.map(a => s.v[a.key] ?? '')].join(',')));
   const blob = new Blob(['﻿' + lines.join('\n')], { type:'text/csv' });
   const name = 'snapshots_' + localStamp(Date.now()).slice(0, 10) + '.csv';
- 
+
   // 1) Computer (Chrome/Edge): "Save as" dialog to pick folder and file name
   try {
     if (window.showSaveFilePicker) {
@@ -536,7 +721,7 @@ document.getElementById('csv').onclick = async () => {
       return;
     }
   } catch (e) { if (e.name === 'AbortError') return; }
- 
+
   // 2) Phone: share sheet, choose Files / Drive / WhatsApp / email ...
   try {
     const file = new File([blob], name, { type:'text/csv' });
@@ -545,7 +730,7 @@ document.getElementById('csv').onclick = async () => {
       return;
     }
   } catch (e) { if (e.name === 'AbortError') return; }
- 
+
   // 3) Fallback: normal download
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = name; a.click();
@@ -564,7 +749,7 @@ document.getElementById('awake').onclick = async (e) => {
     else { wake = await navigator.wakeLock.request('screen'); e.target.textContent = 'Keep screen on: ON'; }
   } catch { alert('Keeping the screen on is not supported here.'); }
 };
- 
+
 renderLive();
 loadServer().then(() => {
   renderChart(); renderTable();
@@ -572,11 +757,5 @@ loadServer().then(() => {
   setInterval(tick, CHART_EVERY_MS);
 });
 </script>
-
-<footer>
-  <span>This site is intended for personal use only.</span>
-  <span>The owner, author and publisher are not responsible for any advice or decisions you make based on information provided by this site.</span>
-</footer>
-
 </body>
 </html>
